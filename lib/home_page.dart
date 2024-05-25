@@ -36,8 +36,7 @@ class _HomePageState extends State<HomePage> {
       List<Uint8List> faceImages = [];
       for (var image in images) {
         final faceRects = await ImageService.instance.detectFaces(image.path);
-        final faces =
-            await ImageService.instance.extractFaces(image.path, faceRects);
+        final faces = await ImageService.instance.extractFaces(image.path, faceRects);
         faceImages.addAll(faces);
       }
 
@@ -87,8 +86,7 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     CircularProgressIndicator(),
                     SizedBox(height: 20),
-                    Text(
-                        'Processing: ${(_progress * 100).toStringAsFixed(2)}%'),
+                    Text('Processing: ${(_progress * 100).toStringAsFixed(2)}%'),
                     SizedBox(height: 10),
                     Text('Images found: ${_images.length}'),
                   ],
@@ -99,8 +97,7 @@ class _HomePageState extends State<HomePage> {
                     itemBuilder: (context, index) {
                       return ListTile(
                         title: Text(_images[index].path),
-                        subtitle:
-                            Text('Faces detected: ${_images[index].faceCount}'),
+                        subtitle: Text('Faces detected: ${_images[index].faceCount}'),
                       );
                     },
                   ),
