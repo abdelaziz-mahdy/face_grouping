@@ -7,7 +7,7 @@ import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 class FacesPage extends StatelessWidget {
   final String imagePath;
-  final cv.VecRect faceRects;
+  final List<cv.Rect> faceRects;
 
   FacesPage({required this.imagePath, required this.faceRects});
 

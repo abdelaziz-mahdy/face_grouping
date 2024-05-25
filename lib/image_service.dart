@@ -3,14 +3,49 @@ import 'dart:io';
 import 'dart:isolate';
 import 'package:flutter/services.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
-import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+
+class SendableRect {
+  final int x, y, width, height;
+  SendableRect({
+    required this.x,
+    required this.y,
+    required this.width,
+    required this.height,
+  });
+
+  cv.Rect toRect() {
+    return cv.Rect(x, y, width, height);
+  }
+
+  static SendableRect fromRect(cv.Rect rect) {
+    return SendableRect(
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+    );
+  }
+}
 
 class ImageData {
   final String path;
   final int faceCount;
+  final List<SendableRect> sendableFaceRects;
 
-  ImageData({required this.path, required this.faceCount});
+  ImageData({
+    required this.path,
+    required this.faceCount,
+    required this.sendableFaceRects,
+  });
+
+  List<cv.Rect> get faceRects {
+    List<cv.Rect> rects = [];
+    for (var sendableRect in sendableFaceRects) {
+      rects.add(sendableRect.toRect());
+    }
+    return rects;
+  }
 }
 
 class ImageService {
@@ -42,6 +77,7 @@ class ImageService {
   }
 
   Future<List<ImageData>> processDirectory(String directoryPath, void Function(double) progressCallback) async {
+    await _loadXml();
     final completer = Completer<List<ImageData>>();
     final receivePort = ReceivePort();
 
@@ -68,7 +104,8 @@ class ImageService {
     for (var i = 0; i < imageFiles.length; i++) {
       final entity = imageFiles[i] as File;
       final faceRects = await _detectFaces(entity.path, params.haarcascadesPath);
-      images.add(ImageData(path: entity.path, faceCount: faceRects.length));
+      final sendableRects = faceRects.map((rect) => SendableRect.fromRect(rect)).toList();
+      images.add(ImageData(path: entity.path, faceCount: faceRects.length, sendableFaceRects: sendableRects));
       params.sendPort.send((i + 1) / imageFiles.length);
     }
 
@@ -88,11 +125,12 @@ class ImageService {
     return rects;
   }
 
-  Future<List<Uint8List>> extractFaces(String imagePath, cv.VecRect faceRects) async {
+  Future<List<Uint8List>> extractFaces(String imagePath, List<cv.Rect> faceRects) async {
     final completer = Completer<List<Uint8List>>();
     final receivePort = ReceivePort();
 
-    Isolate.spawn(_extractFacesIsolate, _ExtractFacesParams(imagePath, faceRects, receivePort.sendPort));
+    final sendableFaceRects = faceRects.map((rect) => SendableRect.fromRect(rect)).toList();
+    Isolate.spawn(_extractFacesIsolate, _ExtractFacesParams(imagePath, sendableFaceRects, receivePort.sendPort));
 
     receivePort.listen((message) {
       if (message is List<Uint8List>) {
@@ -109,7 +147,7 @@ class ImageService {
     final faceImages = <Uint8List>[];
 
     for (var i = 0; i < params.faceRects.length; i++) {
-      final faceRect = params.faceRects.elementAt(i);
+      final faceRect = params.faceRects[i].toRect();
       final face = img.region(faceRect);
       faceImages.add(cv.imencode('.jpg', face));
     }
@@ -128,7 +166,7 @@ class _ProcessDirectoryParams {
 
 class _ExtractFacesParams {
   final String imagePath;
-  final cv.VecRect faceRects;
+  final List<SendableRect> faceRects;
   final SendPort sendPort;
 
   _ExtractFacesParams(this.imagePath, this.faceRects, this.sendPort);

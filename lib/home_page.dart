@@ -1,7 +1,5 @@
-import 'package:face_grouping/faces_page.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:opencv_dart/opencv_dart.dart';
 import 'image_service.dart';
 import 'dart:typed_data';
 
@@ -35,8 +33,7 @@ class _HomePageState extends State<HomePage> {
 
       List<Uint8List> faceImages = [];
       for (var image in images) {
-        final faceRects = await ImageService.instance.detectFaces(image.path);
-        final faces = await ImageService.instance.extractFaces(image.path, faceRects);
+        final faces = await ImageService.instance.extractFaces(image.path, image.faceRects);
         faceImages.addAll(faces);
       }
 
