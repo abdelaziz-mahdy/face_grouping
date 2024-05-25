@@ -19,20 +19,18 @@ class ImageService {
     return instance;
   }
 
-  Future<List<ImageData>> processDirectory(String directoryPath) async {
-    List<ImageData> images = [];
-    await for (var entity in Directory(directoryPath).list(recursive: true)) {
-      if (entity is File && _isImageFile(entity.path)) {
-        final faceRects = await detectFaces(entity.path);
-        images.add(ImageData(path: entity.path, faceCount: faceRects.length));
-      }
-    }
-    return images;
-  }
+  bool _xmlLoaded = false;
+  String? _haarcascadesPath;
 
-  bool _isImageFile(String path) {
-    return ['.jpg', '.jpeg', '.png', '.bmp']
-        .any((ext) => path.toLowerCase().endsWith(ext));
+  Future<void> _loadXml() async {
+    if (!_xmlLoaded) {
+      final tmpDir = await getTemporaryDirectory();
+      _haarcascadesPath = '${tmpDir.path}/haarcascade_frontalface_default.xml';
+
+      await _copyAssetFileToTmp(
+          'assets/haarcascade_frontalface_default.xml', _haarcascadesPath!);
+      _xmlLoaded = true;
+    }
   }
 
   Future<void> _copyAssetFileToTmp(String assetPath, String tmpPath) async {
@@ -42,33 +40,45 @@ class ImageService {
   }
 
   Future<cv.VecRect> detectFaces(String imagePath) async {
-    final tmpDir = await getTemporaryDirectory();
-    final haarcascadesPath =
-        '${tmpDir.path}/haarcascade_frontalface_default.xml';
-
-    await _copyAssetFileToTmp(
-        'assets/haarcascade_frontalface_default.xml', haarcascadesPath);
+    await _loadXml();
 
     final img = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
     final classifier = cv.CascadeClassifier.empty();
-    classifier.load(haarcascadesPath);
+    classifier.load(_haarcascadesPath!);
     final rects = classifier.detectMultiScale(img);
     return rects;
   }
 
-  Future<List<Uint8List>> extractFaces(
-      String imagePath, cv.VecRect faceRects) async {
+  Future<List<Uint8List>> extractFaces(String imagePath, cv.VecRect faceRects) async {
     final img = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
     List<Uint8List> faceImages = [];
 
     for (var i = 0; i < faceRects.length; i++) {
       final faceRect = faceRects.elementAt(i);
-
       final face = img.region(faceRect);
-
       faceImages.add(cv.imencode('.jpg', face));
     }
 
     return faceImages;
+  }
+
+  Future<List<ImageData>> processDirectory(String directoryPath, void Function(double) progressCallback) async {
+    List<ImageData> images = [];
+    final dir = Directory(directoryPath);
+    final entities = await dir.list(recursive: true).toList();
+    final imageFiles = entities.where((entity) => entity is File && _isImageFile(entity.path)).toList();
+
+    for (var i = 0; i < imageFiles.length; i++) {
+      final entity = imageFiles[i] as File;
+      final faceRects = await detectFaces(entity.path);
+      images.add(ImageData(path: entity.path, faceCount: faceRects.length));
+      progressCallback((i + 1) / imageFiles.length);
+    }
+    return images;
+  }
+
+  bool _isImageFile(String path) {
+    return ['.jpg', '.jpeg', '.png', '.bmp']
+        .any((ext) => path.toLowerCase().endsWith(ext));
   }
 }
