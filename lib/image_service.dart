@@ -32,11 +32,13 @@ class ImageData {
   final String path;
   final int faceCount;
   final List<SendableRect> sendableFaceRects;
+  final List<Uint8List> faceImages;
 
   ImageData({
     required this.path,
     required this.faceCount,
     required this.sendableFaceRects,
+    required this.faceImages,
   });
 
   List<cv.Rect> get faceRects {
@@ -76,16 +78,25 @@ class ImageService {
     await file.writeAsBytes(byteData.buffer.asUint8List());
   }
 
-  Future<List<ImageData>> processDirectory(String directoryPath, void Function(double) progressCallback) async {
+  Future<List<ImageData>> processDirectory(String directoryPath,
+      void Function(double, Duration, int, int) progressCallback) async {
     await _loadXml();
     final completer = Completer<List<ImageData>>();
     final receivePort = ReceivePort();
+    final startTime = DateTime.now();
 
-    Isolate.spawn(_processDirectoryIsolate, _ProcessDirectoryParams(directoryPath, receivePort.sendPort, _haarcascadesPath!));
+    Isolate.spawn(
+        _processDirectoryIsolate,
+        _ProcessDirectoryParams(
+            directoryPath, receivePort.sendPort, _haarcascadesPath!));
 
     receivePort.listen((message) {
-      if (message is double) {
-        progressCallback(message);
+      if (message is _ProgressMessage) {
+        final elapsed = DateTime.now().difference(startTime);
+        final estimatedTotalTime = elapsed * (1 / message.progress);
+        final remainingTime = estimatedTotalTime - elapsed;
+        progressCallback(
+            message.progress, remainingTime, message.processed, message.total);
       } else if (message is List<ImageData>) {
         completer.complete(message);
         receivePort.close();
@@ -95,18 +106,34 @@ class ImageService {
     return completer.future;
   }
 
-  static Future<void> _processDirectoryIsolate(_ProcessDirectoryParams params) async {
+  static Future<void> _processDirectoryIsolate(
+      _ProcessDirectoryParams params) async {
     final images = <ImageData>[];
     final dir = Directory(params.directoryPath);
     final entities = await dir.list(recursive: true).toList();
-    final imageFiles = entities.where((entity) => entity is File && _isImageFile(entity.path)).toList();
+    final imageFiles = entities
+        .where((entity) => entity is File && _isImageFile(entity.path))
+        .toList();
+
+    final totalImages = imageFiles.length;
 
     for (var i = 0; i < imageFiles.length; i++) {
       final entity = imageFiles[i] as File;
-      final faceRects = await _detectFaces(entity.path, params.haarcascadesPath);
-      final sendableRects = faceRects.map((rect) => SendableRect.fromRect(rect)).toList();
-      images.add(ImageData(path: entity.path, faceCount: faceRects.length, sendableFaceRects: sendableRects));
-      params.sendPort.send((i + 1) / imageFiles.length);
+      final faceRects =
+          await _detectFaces(entity.path, params.haarcascadesPath);
+      final sendableRects =
+          faceRects.map((rect) => SendableRect.fromRect(rect)).toList();
+      final faceImages = await _extractFaces(entity.path, sendableRects);
+
+      images.add(ImageData(
+        path: entity.path,
+        faceCount: faceRects.length,
+        sendableFaceRects: sendableRects,
+        faceImages: faceImages,
+      ));
+
+      final progress = (i + 1) / totalImages;
+      params.sendPort.send(_ProgressMessage(progress, i + 1, totalImages));
     }
 
     params.sendPort.send(images);
@@ -117,7 +144,8 @@ class ImageService {
         .any((ext) => path.toLowerCase().endsWith(ext));
   }
 
-  static Future<cv.VecRect> _detectFaces(String imagePath, String haarcascadesPath) async {
+  static Future<cv.VecRect> _detectFaces(
+      String imagePath, String haarcascadesPath) async {
     final img = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
     final classifier = cv.CascadeClassifier.empty();
     classifier.load(haarcascadesPath);
@@ -125,34 +153,18 @@ class ImageService {
     return rects;
   }
 
-  Future<List<Uint8List>> extractFaces(String imagePath, List<cv.Rect> faceRects) async {
-    final completer = Completer<List<Uint8List>>();
-    final receivePort = ReceivePort();
-
-    final sendableFaceRects = faceRects.map((rect) => SendableRect.fromRect(rect)).toList();
-    Isolate.spawn(_extractFacesIsolate, _ExtractFacesParams(imagePath, sendableFaceRects, receivePort.sendPort));
-
-    receivePort.listen((message) {
-      if (message is List<Uint8List>) {
-        completer.complete(message);
-        receivePort.close();
-      }
-    });
-
-    return completer.future;
-  }
-
-  static Future<void> _extractFacesIsolate(_ExtractFacesParams params) async {
-    final img = cv.imread(params.imagePath, flags: cv.IMREAD_COLOR);
+  static Future<List<Uint8List>> _extractFaces(
+      String imagePath, List<SendableRect> sendableRects) async {
+    final img = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
     final faceImages = <Uint8List>[];
 
-    for (var i = 0; i < params.faceRects.length; i++) {
-      final faceRect = params.faceRects[i].toRect();
+    for (var sendableRect in sendableRects) {
+      final faceRect = sendableRect.toRect();
       final face = img.region(faceRect);
       faceImages.add(cv.imencode('.jpg', face));
     }
 
-    params.sendPort.send(faceImages);
+    return faceImages;
   }
 }
 
@@ -161,13 +173,14 @@ class _ProcessDirectoryParams {
   final SendPort sendPort;
   final String haarcascadesPath;
 
-  _ProcessDirectoryParams(this.directoryPath, this.sendPort, this.haarcascadesPath);
+  _ProcessDirectoryParams(
+      this.directoryPath, this.sendPort, this.haarcascadesPath);
 }
 
-class _ExtractFacesParams {
-  final String imagePath;
-  final List<SendableRect> faceRects;
-  final SendPort sendPort;
+class _ProgressMessage {
+  final double progress;
+  final int processed;
+  final int total;
 
-  _ExtractFacesParams(this.imagePath, this.faceRects, this.sendPort);
+  _ProgressMessage(this.progress, this.processed, this.total);
 }

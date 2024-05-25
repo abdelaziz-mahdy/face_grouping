@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'image_service.dart';
 import 'dart:typed_data';
-
 class HomePage extends StatefulWidget {
   @override
   _HomePageState createState() => _HomePageState();
@@ -11,8 +10,10 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   bool _isProcessing = false;
   List<ImageData> _images = [];
-  List<Uint8List> _faceImages = [];
   double _progress = 0.0;
+  Duration _timeRemaining = Duration.zero;
+  int _processedImages = 0;
+  int _totalImages = 0;
 
   void _selectDirectory() async {
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
@@ -20,26 +21,25 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         _isProcessing = true;
         _progress = 0.0;
+        _timeRemaining = Duration.zero;
+        _processedImages = 0;
+        _totalImages = 0;
       });
 
       List<ImageData> images = await ImageService.instance.processDirectory(
         selectedDirectory,
-        (progress) {
+        (progress, timeRemaining, processed, total) {
           setState(() {
             _progress = progress;
+            _timeRemaining = timeRemaining;
+            _processedImages = processed;
+            _totalImages = total;
           });
         },
       );
 
-      List<Uint8List> faceImages = [];
-      for (var image in images) {
-        final faces = await ImageService.instance.extractFaces(image.path, image.faceRects);
-        faceImages.addAll(faces);
-      }
-
       setState(() {
         _images = images;
-        _faceImages = faceImages;
         _isProcessing = false;
       });
     }
@@ -85,7 +85,9 @@ class _HomePageState extends State<HomePage> {
                     SizedBox(height: 20),
                     Text('Processing: ${(_progress * 100).toStringAsFixed(2)}%'),
                     SizedBox(height: 10),
-                    Text('Images found: ${_images.length}'),
+                    Text('Estimated time remaining: ${_timeRemaining.inSeconds} seconds'),
+                    SizedBox(height: 10),
+                    Text('Images processed: $_processedImages out of $_totalImages'),
                   ],
                 )
               : Expanded(
@@ -105,10 +107,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildFacesTab() {
+    final faceImages = _images.expand((image) => image.faceImages).toList();
+
     return Center(
       child: _isProcessing
           ? CircularProgressIndicator()
-          : _faceImages.isEmpty
+          : faceImages.isEmpty
               ? Text('No faces detected')
               : GridView.builder(
                   gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -116,9 +120,9 @@ class _HomePageState extends State<HomePage> {
                     crossAxisSpacing: 4,
                     mainAxisSpacing: 4,
                   ),
-                  itemCount: _faceImages.length,
+                  itemCount: faceImages.length,
                   itemBuilder: (context, index) {
-                    return Image.memory(_faceImages[index]);
+                    return Image.memory(faceImages[index]);
                   },
                 ),
     );
