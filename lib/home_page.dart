@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'image_service.dart';
-import 'dart:typed_data';
+
 class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
   @override
   _HomePageState createState() => _HomePageState();
 }
@@ -51,8 +53,8 @@ class _HomePageState extends State<HomePage> {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text('Face Detection App'),
-          bottom: TabBar(
+          title: const Text('Face Detection App'),
+          bottom: const TabBar(
             tabs: [
               Tab(text: "Images"),
               Tab(text: "Faces"),
@@ -67,7 +69,7 @@ class _HomePageState extends State<HomePage> {
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: _selectDirectory,
-          child: Icon(Icons.folder_open),
+          child: const Icon(Icons.folder_open),
         ),
       ),
     );
@@ -81,13 +83,16 @@ class _HomePageState extends State<HomePage> {
           _isProcessing
               ? Column(
                   children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 20),
-                    Text('Processing: ${(_progress * 100).toStringAsFixed(2)}%'),
-                    SizedBox(height: 10),
-                    Text('Estimated time remaining: ${_timeRemaining.inSeconds} seconds'),
-                    SizedBox(height: 10),
-                    Text('Images processed: $_processedImages out of $_totalImages'),
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 20),
+                    Text(
+                        'Processing: ${(_progress * 100).toStringAsFixed(2)}%'),
+                    const SizedBox(height: 10),
+                    Text(
+                        'Estimated time remaining: ${_timeRemaining.inSeconds} seconds'),
+                    const SizedBox(height: 10),
+                    Text(
+                        'Images processed: $_processedImages out of $_totalImages'),
                   ],
                 )
               : Expanded(
@@ -96,7 +101,8 @@ class _HomePageState extends State<HomePage> {
                     itemBuilder: (context, index) {
                       return ListTile(
                         title: Text(_images[index].path),
-                        subtitle: Text('Faces detected: ${_images[index].faceCount}'),
+                        subtitle:
+                            Text('Faces detected: ${_images[index].faceCount}'),
                       );
                     },
                   ),
@@ -111,11 +117,11 @@ class _HomePageState extends State<HomePage> {
 
     return Center(
       child: _isProcessing
-          ? CircularProgressIndicator()
+          ? const CircularProgressIndicator()
           : faceImages.isEmpty
-              ? Text('No faces detected')
+              ? const Text('No faces detected')
               : GridView.builder(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
                     crossAxisSpacing: 4,
                     mainAxisSpacing: 4,
