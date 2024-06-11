@@ -166,7 +166,7 @@ class ImageService {
       String imagePath, List<SendableRect> sendableRects) async {
     final img = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
     final faceImages = <Uint8List>[];
-
+    List<SendableRect> corruptedSendableRects = [];
     for (var sendableRect in sendableRects) {
       try {
         final faceRect = sendableRect.toRect();
@@ -174,9 +174,10 @@ class ImageService {
         faceImages.add(cv.imencode('.jpg', face));
       } catch (e) {
         print("Failed $e");
+        corruptedSendableRects.add(sendableRect);
       }
     }
-
+    sendableRects.removeWhere((e) => corruptedSendableRects.contains(e));
     return faceImages;
   }
 }

@@ -11,7 +11,8 @@ import 'image_service.dart';
 class FaceRecognitionService {
   FaceRecognitionService._privateConstructor();
 
-  static final FaceRecognitionService instance = FaceRecognitionService._privateConstructor();
+  static final FaceRecognitionService instance =
+      FaceRecognitionService._privateConstructor();
 
   factory FaceRecognitionService() {
     return instance;
@@ -31,7 +32,8 @@ class FaceRecognitionService {
     void Function(double) progressCallback,
     void Function(List<List<Uint8List>>) completionCallback,
   ) async {
-    final tmpModelPath = await _copyAssetFileToTmp("assets/face_recognition_sface_2021dec.onnx");
+    final tmpModelPath =
+        await _copyAssetFileToTmp("assets/face_recognition_sface_2021dec.onnx");
 
     final receivePort = ReceivePort();
 
@@ -50,22 +52,38 @@ class FaceRecognitionService {
     });
   }
 
-  static Future<void> _groupSimilarFacesIsolate(_GroupFacesParams params) async {
-    final recognizer = cv.FaceRecognizerSF.newRecognizer(params.modelPath, "", 0, 0);
+  static Future<void> _groupSimilarFacesIsolate(
+      _GroupFacesParams params) async {
+    final recognizer =
+        cv.FaceRecognizerSF.newRecognizer(params.modelPath, "", 0, 0);
     final faceFeatures = <Uint8List, cv.Mat>{};
 
     // Extract features for each face image
     for (var image in params.images) {
-      for (var faceImage in image.faceImages) {
-        final mat = cv.imdecode(faceImage,  cv.IMREAD_COLOR);
-        final feature = recognizer.feature(mat);
+      for (var i = 0; i < image.sendableFaceRects.length; i++) {
+        final faceImage = image.faceImages[i];
+        final rect = image.sendableFaceRects[i].toRect();
+        final mat = cv.imdecode(faceImage, cv.IMREAD_COLOR);
+        final faceBox = cv.Mat.zeros(1, 4, cv.MatType.CV_32SC1);
+        faceBox.set<int>(0, 0, rect.x); // x
+        faceBox.set<int>(0, 1, rect.y); // y
+        faceBox.set<int>(0, 2, rect.width); // width
+        faceBox.set<int>(0, 3, rect.height); // height
+        // Align and crop the face using alignCrop
+        final alignedFace = recognizer.alignCrop(mat, faceBox);
+
+        // Extract features from the aligned and cropped face
+        final feature = recognizer.feature(alignedFace);
         faceFeatures[faceImage] = feature;
+
       }
     }
 
     final faceGroups = <List<Uint8List>>[];
     final totalFaces = faceFeatures.length;
     var processedFaces = 0;
+
+    const thresholdCosine = 0.363; // Example threshold for cosine similarity
 
     // Group similar faces
     for (var entry in faceFeatures.entries) {
@@ -76,13 +94,13 @@ class FaceRecognitionService {
 
       for (var group in faceGroups) {
         final representative = faceFeatures[group[0]]!;
-        final matchScoreL2 = recognizer.match(
+        final matchScoreCosine = recognizer.match(
           faceFeature,
           representative,
-          cv.FaceRecognizerSF.DIS_TYPE_FR_NORM_L2,
+          cv.FaceRecognizerSF.DIS_TYPR_FR_COSINE,
         );
 
-        if (matchScoreL2 < 0.6) { // Threshold for similarity, adjust as needed
+        if (matchScoreCosine <= thresholdCosine) {
           group.add(faceImage);
           added = true;
           break;
@@ -93,7 +111,6 @@ class FaceRecognitionService {
         faceGroups.add([faceImage]);
       }
 
-      faceFeature.dispose();
       processedFaces++;
       params.sendPort.send(_ProgressMessage(processedFaces / totalFaces));
     }
