@@ -49,6 +49,27 @@ class _SimilarFacesTabState extends State<SimilarFacesTab> {
     );
   }
 
+  Widget _buildFaceImage(Uint8List faceImageData) {
+    return FutureBuilder<Uint8List>(
+      future: _decodeFaceImage(faceImageData),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done &&
+            snapshot.hasData) {
+          return Image.memory(snapshot.data!);
+        } else {
+          return const CircularProgressIndicator();
+        }
+      },
+    );
+  }
+
+  Future<Uint8List> _decodeFaceImage(Uint8List encodedFaceImage) async {
+    // Decode the face image as needed
+    // Since we are dynamically rendering, we may not need to do any heavy operations here
+    // This placeholder can be expanded based on specific requirements
+    return encodedFaceImage;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -81,7 +102,7 @@ class _SimilarFacesTabState extends State<SimilarFacesTab> {
                               itemBuilder: (context, faceIndex) {
                                 return Padding(
                                   padding: const EdgeInsets.all(4.0),
-                                  child: Image.memory(group[faceIndex]),
+                                  child: _buildFaceImage(group[faceIndex]),
                                 );
                               },
                             ),

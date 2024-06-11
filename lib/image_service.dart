@@ -9,24 +9,27 @@ import 'package:path_provider/path_provider.dart';
 
 class SendableRect {
   final int x, y, width, height;
+  final List<double> rawDetection; // Store the raw detection row
 
   SendableRect({
     required this.x,
     required this.y,
     required this.width,
     required this.height,
+    required this.rawDetection, // Initialize the new field
   });
 
   cv.Rect toRect() {
     return cv.Rect(x, y, width, height);
   }
 
-  static SendableRect fromRect(cv.Rect rect) {
+  static SendableRect fromRect(cv.Rect rect, List<double> rawDetection) {
     return SendableRect(
       x: rect.x,
       y: rect.y,
       width: rect.width,
       height: rect.height,
+      rawDetection: rawDetection, // Assign the raw detection data
     );
   }
 }
@@ -35,13 +38,11 @@ class ImageData {
   final String path;
   final int faceCount;
   final List<SendableRect> sendableFaceRects;
-  final List<Uint8List> faceImages;
 
   ImageData({
     required this.path,
     required this.faceCount,
     required this.sendableFaceRects,
-    required this.faceImages,
   });
 
   List<cv.Rect> get faceRects {
@@ -75,7 +76,6 @@ class ImageService {
     final receivePort = ReceivePort();
     final startTime = DateTime.now();
 
-    // Copy the model to the temporary directory and get its path.
     final tmpModelPath =
         await _copyAssetFileToTmp("assets/face_detection_yunet_2023mar.onnx");
 
@@ -123,16 +123,12 @@ class ImageService {
 
     for (var i = 0; i < imageFiles.length; i++) {
       final entity = imageFiles[i] as File;
-      final faceRects = await _detectFaces(entity.path, faceDetector);
-      final sendableRects =
-          faceRects.map((rect) => SendableRect.fromRect(rect)).toList();
-      final faceImages = await _extractFaces(entity.path, sendableRects);
+      final sendableRects = await _detectFaces(entity.path, faceDetector);
 
       images.add(ImageData(
         path: entity.path,
-        faceCount: faceRects.length,
+        faceCount: sendableRects.length,
         sendableFaceRects: sendableRects,
-        faceImages: faceImages,
       ));
 
       final progress = (i + 1) / totalImages;
@@ -147,38 +143,20 @@ class ImageService {
         .any((ext) => path.toLowerCase().endsWith(ext));
   }
 
-  static Future<List<cv.Rect>> _detectFaces(
+  static Future<List<SendableRect>> _detectFaces(
       String imagePath, cv.FaceDetectorYN detector) async {
     final img = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
     detector.setInputSize((img.width, img.height));
     final faces = detector.detect(img);
     return List.generate(faces.rows, (i) {
-      return cv.Rect(
-        faces.at<double>(i, 0).toInt(),
-        faces.at<double>(i, 1).toInt(),
-        faces.at<double>(i, 2).toInt(),
-        faces.at<double>(i, 3).toInt(),
-      );
+      return SendableRect(
+          x: faces.at<double>(i, 0).toInt(),
+          y: faces.at<double>(i, 1).toInt(),
+          width: faces.at<double>(i, 2).toInt(),
+          height: faces.at<double>(i, 3).toInt(),
+          rawDetection: List.generate(
+              faces.width, (index) => faces.at<double>(i, index)));
     });
-  }
-
-  static Future<List<Uint8List>> _extractFaces(
-      String imagePath, List<SendableRect> sendableRects) async {
-    final img = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
-    final faceImages = <Uint8List>[];
-    List<SendableRect> corruptedSendableRects = [];
-    for (var sendableRect in sendableRects) {
-      try {
-        final faceRect = sendableRect.toRect();
-        final face = img.region(faceRect);
-        faceImages.add(cv.imencode('.jpg', face));
-      } catch (e) {
-        print("Failed $e");
-        corruptedSendableRects.add(sendableRect);
-      }
-    }
-    sendableRects.removeWhere((e) => corruptedSendableRects.contains(e));
-    return faceImages;
   }
 }
 

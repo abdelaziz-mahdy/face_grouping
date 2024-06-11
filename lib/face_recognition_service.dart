@@ -57,32 +57,35 @@ class FaceRecognitionService {
     final recognizer =
         cv.FaceRecognizerSF.newRecognizer(params.modelPath, "", 0, 0);
     final faceFeatures = <Uint8List, cv.Mat>{};
-    final totalFaces = params.images.fold<int>(0, (sum, image) => sum + image.faceImages.length);
+    final totalFaces = params.images
+        .fold<int>(0, (sum, image) => sum + image.sendableFaceRects.length);
 
     int processedFaces = 0;
-    
+
     // Phase 1: Extract features for each face image
     for (var image in params.images) {
+      final imagePath = image.path;
       for (var i = 0; i < image.sendableFaceRects.length; i++) {
-        final faceImage = image.faceImages[i];
-        final rect = image.sendableFaceRects[i].toRect();
-        final mat = cv.imdecode(faceImage, cv.IMREAD_COLOR);
+        final rect = image.sendableFaceRects[i];
+        final mat = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
 
-        final faceBox = cv.Mat.zeros(1, 4, cv.MatType.CV_32SC1);
-        faceBox.set<int>(0, 0, rect.x); // x
-        faceBox.set<int>(0, 1, rect.y); // y
-        faceBox.set<int>(0, 2, rect.width); // width
-        faceBox.set<int>(0, 3, rect.height); // height
+        // Create a bounding box Mat from raw detection data
+        final faceBox =
+            cv.Mat.fromList(1, rect.rawDetection.length, cv.MatType.CV_32FC1, rect.rawDetection);
+
         // Align and crop the face using alignCrop
         final alignedFace = recognizer.alignCrop(mat, faceBox);
 
         // Extract features from the aligned and cropped face
         final feature = recognizer.feature(alignedFace);
-        faceFeatures[faceImage] = feature;
+        final encodedFace = cv.imencode('.jpg', alignedFace);
+        faceFeatures[encodedFace] = feature;
 
         alignedFace.dispose();
+        faceBox.dispose(); // Dispose the faceBox after use
         processedFaces++;
-        params.sendPort.send(_ProgressMessage(processedFaces / totalFaces, "Extracting Features"));
+        params.sendPort.send(_ProgressMessage(
+            processedFaces / totalFaces, "Extracting Features"));
       }
     }
 
@@ -104,7 +107,8 @@ class FaceRecognitionService {
           cv.FaceRecognizerSF.DIS_TYPR_FR_COSINE,
         );
 
-        if (matchScoreCosine <= 0.363) { // Threshold for cosine similarity
+        if (matchScoreCosine <= 0.363) {
+          // Threshold for cosine similarity
           group.add(faceImage);
           added = true;
           break;
@@ -116,7 +120,8 @@ class FaceRecognitionService {
       }
 
       processedFaces++;
-      params.sendPort.send(_ProgressMessage(processedFaces / totalFaces, "Grouping Faces"));
+      params.sendPort.send(
+          _ProgressMessage(processedFaces / totalFaces, "Grouping Faces"));
     }
 
     recognizer.dispose();
