@@ -59,11 +59,14 @@ class ImageService {
   factory ImageService() {
     return instance;
   }
-  
-  Future<void> _copyAssetFileToTmp(String assetPath, String tmpPath) async {
+
+  Future<String> _copyAssetFileToTmp(String assetPath) async {
+    final tmpDir = await getTemporaryDirectory();
+    final tmpPath = '${tmpDir.path}/${assetPath.split('/').last}';
     final byteData = await rootBundle.load(assetPath);
     final file = File(tmpPath);
     await file.writeAsBytes(byteData.buffer.asUint8List());
+    return tmpPath;
   }
 
   Future<List<ImageData>> processDirectory(String directoryPath,
@@ -72,8 +75,14 @@ class ImageService {
     final receivePort = ReceivePort();
     final startTime = DateTime.now();
 
-    Isolate.spawn(_processDirectoryIsolate,
-        _ProcessDirectoryParams(directoryPath, receivePort.sendPort));
+    // Copy the model to the temporary directory and get its path.
+    final tmpModelPath =
+        await _copyAssetFileToTmp("assets/face_detection_yunet_2023mar.onnx");
+
+    Isolate.spawn(
+        _processDirectoryIsolate,
+        _ProcessDirectoryParams(
+            directoryPath, receivePort.sendPort, tmpModelPath));
 
     receivePort.listen((message) {
       if (message is _ProgressMessage) {
@@ -100,12 +109,11 @@ class ImageService {
         .where((entity) => entity is File && _isImageFile(entity.path))
         .toList();
 
-    const modelPath = "assets/face_detection_yunet_2023mar.onnx";
-    final buf = (await rootBundle.load(modelPath)).buffer.asUint8List();
+    final modelFile = File(params.modelPath);
+    final buf = await modelFile.readAsBytes();
     final faceDetector =
         cv.FaceDetectorYN.fromBuffer("onnx", buf, Uint8List(0), (320, 320));
 
-    // Initialize FaceDetectorYN with required parameters.
     final totalImages = imageFiles.length;
 
     for (var i = 0; i < imageFiles.length; i++) {
@@ -155,9 +163,13 @@ class ImageService {
     final faceImages = <Uint8List>[];
 
     for (var sendableRect in sendableRects) {
-      final faceRect = sendableRect.toRect();
-      final face = img.region(faceRect);
-      faceImages.add(cv.imencode('.jpg', face));
+      try {
+        final faceRect = sendableRect.toRect();
+        final face = img.region(faceRect);
+        faceImages.add(cv.imencode('.jpg', face));
+      } catch (e) {
+        print("Failed $e");
+      }
     }
 
     return faceImages;
@@ -167,8 +179,9 @@ class ImageService {
 class _ProcessDirectoryParams {
   final String directoryPath;
   final SendPort sendPort;
+  final String modelPath;
 
-  _ProcessDirectoryParams(this.directoryPath, this.sendPort);
+  _ProcessDirectoryParams(this.directoryPath, this.sendPort, this.modelPath);
 }
 
 class _ProgressMessage {
