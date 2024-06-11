@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 class SendableRect {
   final int x, y, width, height;
+
   SendableRect({
     required this.x,
     required this.y,
@@ -44,16 +45,13 @@ class ImageData {
   });
 
   List<cv.Rect> get faceRects {
-    List<cv.Rect> rects = [];
-    for (var sendableRect in sendableFaceRects) {
-      rects.add(sendableRect.toRect());
-    }
-    return rects;
+    return sendableFaceRects.map((r) => r.toRect()).toList();
   }
 }
 
 class ImageService {
   ImageService._privateConstructor();
+
   static final ImageService instance = ImageService._privateConstructor();
 
   factory ImageService() {
@@ -69,8 +67,10 @@ class ImageService {
     return tmpPath;
   }
 
-  Future<List<ImageData>> processDirectory(String directoryPath,
-      void Function(double, Duration, int, int) progressCallback) async {
+  Future<List<ImageData>> processDirectory(
+    String directoryPath,
+    void Function(double, Duration, int, int) progressCallback,
+  ) async {
     final completer = Completer<List<ImageData>>();
     final receivePort = ReceivePort();
     final startTime = DateTime.now();
@@ -80,9 +80,10 @@ class ImageService {
         await _copyAssetFileToTmp("assets/face_detection_yunet_2023mar.onnx");
 
     Isolate.spawn(
-        _processDirectoryIsolate,
-        _ProcessDirectoryParams(
-            directoryPath, receivePort.sendPort, tmpModelPath));
+      _processDirectoryIsolate,
+      _ProcessDirectoryParams(
+          directoryPath, receivePort.sendPort, tmpModelPath),
+    );
 
     receivePort.listen((message) {
       if (message is _ProgressMessage) {
@@ -90,7 +91,11 @@ class ImageService {
         final estimatedTotalTime = elapsed * (1 / message.progress);
         final remainingTime = estimatedTotalTime - elapsed;
         progressCallback(
-            message.progress, remainingTime, message.processed, message.total);
+          message.progress,
+          remainingTime,
+          message.processed,
+          message.total,
+        );
       } else if (message is List<ImageData>) {
         completer.complete(message);
         receivePort.close();
