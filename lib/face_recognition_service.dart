@@ -29,7 +29,7 @@ class FaceRecognitionService {
 
   Future<void> groupSimilarFaces(
     List<ImageData> images,
-    void Function(double) progressCallback,
+    void Function(double, String) progressCallback,
     void Function(List<List<Uint8List>>) completionCallback,
   ) async {
     final tmpModelPath =
@@ -44,7 +44,7 @@ class FaceRecognitionService {
 
     receivePort.listen((message) {
       if (message is _ProgressMessage) {
-        progressCallback(message.progress);
+        progressCallback(message.progress, message.stage);
       } else if (message is List<List<Uint8List>>) {
         completionCallback(message);
         receivePort.close();
@@ -57,13 +57,17 @@ class FaceRecognitionService {
     final recognizer =
         cv.FaceRecognizerSF.newRecognizer(params.modelPath, "", 0, 0);
     final faceFeatures = <Uint8List, cv.Mat>{};
+    final totalFaces = params.images.fold<int>(0, (sum, image) => sum + image.faceImages.length);
 
-    // Extract features for each face image
+    int processedFaces = 0;
+    
+    // Phase 1: Extract features for each face image
     for (var image in params.images) {
       for (var i = 0; i < image.sendableFaceRects.length; i++) {
         final faceImage = image.faceImages[i];
         final rect = image.sendableFaceRects[i].toRect();
         final mat = cv.imdecode(faceImage, cv.IMREAD_COLOR);
+
         final faceBox = cv.Mat.zeros(1, 4, cv.MatType.CV_32SC1);
         faceBox.set<int>(0, 0, rect.x); // x
         faceBox.set<int>(0, 1, rect.y); // y
@@ -76,16 +80,16 @@ class FaceRecognitionService {
         final feature = recognizer.feature(alignedFace);
         faceFeatures[faceImage] = feature;
 
+        alignedFace.dispose();
+        processedFaces++;
+        params.sendPort.send(_ProgressMessage(processedFaces / totalFaces, "Extracting Features"));
       }
     }
 
     final faceGroups = <List<Uint8List>>[];
-    final totalFaces = faceFeatures.length;
-    var processedFaces = 0;
+    processedFaces = 0; // Reset processedFaces for the next phase
 
-    const thresholdCosine = 0.363; // Example threshold for cosine similarity
-
-    // Group similar faces
+    // Phase 2: Group similar faces
     for (var entry in faceFeatures.entries) {
       final faceImage = entry.key;
       final faceFeature = entry.value;
@@ -100,7 +104,7 @@ class FaceRecognitionService {
           cv.FaceRecognizerSF.DIS_TYPR_FR_COSINE,
         );
 
-        if (matchScoreCosine <= thresholdCosine) {
+        if (matchScoreCosine <= 0.363) { // Threshold for cosine similarity
           group.add(faceImage);
           added = true;
           break;
@@ -112,7 +116,7 @@ class FaceRecognitionService {
       }
 
       processedFaces++;
-      params.sendPort.send(_ProgressMessage(processedFaces / totalFaces));
+      params.sendPort.send(_ProgressMessage(processedFaces / totalFaces, "Grouping Faces"));
     }
 
     recognizer.dispose();
@@ -130,6 +134,7 @@ class _GroupFacesParams {
 
 class _ProgressMessage {
   final double progress;
+  final String stage;
 
-  _ProgressMessage(this.progress);
+  _ProgressMessage(this.progress, this.stage);
 }

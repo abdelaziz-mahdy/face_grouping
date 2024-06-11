@@ -16,6 +16,7 @@ class SimilarFacesTab extends StatefulWidget {
 class _SimilarFacesTabState extends State<SimilarFacesTab> {
   bool _isProcessing = false;
   double _progress = 0.0;
+  String _stage = "Starting...";
   List<List<Uint8List>> _faceGroups = [];
 
   @override
@@ -28,13 +29,15 @@ class _SimilarFacesTabState extends State<SimilarFacesTab> {
     setState(() {
       _isProcessing = true;
       _progress = 0.0;
+      _stage = "Initializing...";
     });
 
     FaceRecognitionService.instance.groupSimilarFaces(
       widget.images,
-      (progress) {
+      (progress, stage) {
         setState(() {
           _progress = progress;
+          _stage = stage;
         });
       },
       (faceGroups) {
@@ -55,8 +58,7 @@ class _SimilarFacesTabState extends State<SimilarFacesTab> {
               children: [
                 const CircularProgressIndicator(),
                 const SizedBox(height: 20),
-                Text(
-                    'Grouping Similar Faces: ${(_progress * 100).toStringAsFixed(2)}%'),
+                Text('$_stage: ${(_progress * 100).toStringAsFixed(2)}%'),
               ],
             )
           : _faceGroups.isEmpty
