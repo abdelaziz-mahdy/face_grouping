@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'images_tab.dart';
+import 'faces_tab.dart';
+import 'similar_faces_tab.dart';
 import 'package:file_picker/file_picker.dart';
 import 'image_service.dart';
 
@@ -50,7 +53,7 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Face Detection App'),
@@ -58,13 +61,22 @@ class _HomePageState extends State<HomePage> {
             tabs: [
               Tab(text: "Images"),
               Tab(text: "Faces"),
+              Tab(text: "Similar Faces"),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildImagesTab(),
-            _buildFacesTab(),
+            ImagesTab(
+              isProcessing: _isProcessing,
+              progress: _progress,
+              timeRemaining: _timeRemaining,
+              processedImages: _processedImages,
+              totalImages: _totalImages,
+              images: _images,
+            ),
+            FacesTab(images: _images, isProcessing: _isProcessing),
+            SimilarFacesTab(images: _images),
           ],
         ),
         floatingActionButton: FloatingActionButton(
@@ -72,65 +84,6 @@ class _HomePageState extends State<HomePage> {
           child: const Icon(Icons.folder_open),
         ),
       ),
-    );
-  }
-
-  Widget _buildImagesTab() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _isProcessing
-              ? Column(
-                  children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 20),
-                    Text(
-                        'Processing: ${(_progress * 100).toStringAsFixed(2)}%'),
-                    const SizedBox(height: 10),
-                    Text(
-                        'Estimated time remaining: ${_timeRemaining.inSeconds} seconds'),
-                    const SizedBox(height: 10),
-                    Text(
-                        'Images processed: $_processedImages out of $_totalImages'),
-                  ],
-                )
-              : Expanded(
-                  child: ListView.builder(
-                    itemCount: _images.length,
-                    itemBuilder: (context, index) {
-                      return ListTile(
-                        title: Text(_images[index].path),
-                        subtitle:
-                            Text('Faces detected: ${_images[index].faceCount}'),
-                      );
-                    },
-                  ),
-                ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFacesTab() {
-    final faceImages = _images.expand((image) => image.faceImages).toList();
-
-    return Center(
-      child: _isProcessing
-          ? const CircularProgressIndicator()
-          : faceImages.isEmpty
-              ? const Text('No faces detected')
-              : GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 4,
-                    mainAxisSpacing: 4,
-                  ),
-                  itemCount: faceImages.length,
-                  itemBuilder: (context, index) {
-                    return Image.memory(faceImages[index]);
-                  },
-                ),
     );
   }
 }
