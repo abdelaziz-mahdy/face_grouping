@@ -3,6 +3,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:io';
 
+import 'package:face_grouping/mem_equals.dart';
 import 'package:flutter/services.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:path_provider/path_provider.dart';
@@ -53,7 +54,8 @@ class FaceRecognitionService {
   }
 
   static Future<void> _groupSimilarFacesIsolate(
-      _GroupFacesParams params) async {
+    _GroupFacesParams params,
+  ) async {
     final recognizer =
         cv.FaceRecognizerSF.newRecognizer(params.modelPath, "", 0, 0);
     final faceFeatures = <Uint8List, cv.Mat>{};
@@ -70,8 +72,8 @@ class FaceRecognitionService {
         final mat = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
 
         // Create a bounding box Mat from raw detection data
-        final faceBox =
-            cv.Mat.fromList(1, rect.rawDetection.length, cv.MatType.CV_32FC1, rect.rawDetection);
+        final faceBox = cv.Mat.fromList(1, rect.rawDetection.length,
+            cv.MatType.CV_32FC1, rect.rawDetection);
 
         // Align and crop the face using alignCrop
         final alignedFace = recognizer.alignCrop(mat, faceBox);
@@ -79,6 +81,11 @@ class FaceRecognitionService {
         // Extract features from the aligned and cropped face
         final feature = recognizer.feature(alignedFace);
         final encodedFace = cv.imencode('.jpg', alignedFace);
+        try {
+          faceFeatures.values
+              .firstWhere((e) => memEquals(e.data, feature.data));
+          print("MATCH FOUND");
+        } catch (e) {}
         faceFeatures[encodedFace] = feature;
 
         alignedFace.dispose();
@@ -100,10 +107,17 @@ class FaceRecognitionService {
       bool added = false;
 
       for (var group in faceGroups) {
-        final representative = faceFeatures[group[0]]!;
+        final representativeImage = group[0];
+        final representativeFeature = faceFeatures[representativeImage]!;
+        if (memEquals(faceFeature.data, representativeFeature.data)) {
+          print("skipped matching image");
+          continue;
+        }
+
+        // Compare features
         final matchScoreCosine = recognizer.match(
           faceFeature,
-          representative,
+          representativeFeature,
           cv.FaceRecognizerSF.DIS_TYPR_FR_COSINE,
         );
 

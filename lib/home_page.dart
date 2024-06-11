@@ -23,30 +23,35 @@ class _HomePageState extends State<HomePage> {
   void _selectDirectory() async {
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
     if (selectedDirectory != null) {
-      setState(() {
-        _isProcessing = true;
-        _progress = 0.0;
-        _timeRemaining = Duration.zero;
-        _processedImages = 0;
-        _totalImages = 0;
-      });
+      if (mounted) {
+        setState(() {
+          _isProcessing = true;
+          _progress = 0.0;
+          _timeRemaining = Duration.zero;
+          _processedImages = 0;
+          _totalImages = 0;
+        });
+      }
 
       List<ImageData> images = await ImageService.instance.processDirectory(
         selectedDirectory,
         (progress, timeRemaining, processed, total) {
-          setState(() {
-            _progress = progress;
-            _timeRemaining = timeRemaining;
-            _processedImages = processed;
-            _totalImages = total;
-          });
+          if (mounted) {
+            setState(() {
+              _progress = progress;
+              _timeRemaining = timeRemaining;
+              _processedImages = processed;
+              _totalImages = total;
+            });
+          }
         },
       );
-
-      setState(() {
-        _images = images;
-        _isProcessing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _images = images;
+          _isProcessing = false;
+        });
+      }
     }
   }
 

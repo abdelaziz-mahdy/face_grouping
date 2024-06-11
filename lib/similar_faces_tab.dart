@@ -26,25 +26,31 @@ class _SimilarFacesTabState extends State<SimilarFacesTab> {
   }
 
   void _processSimilarFaces() {
-    setState(() {
-      _isProcessing = true;
-      _progress = 0.0;
-      _stage = "Initializing...";
-    });
+    if (mounted) {
+      setState(() {
+        _isProcessing = true;
+        _progress = 0.0;
+        _stage = "Initializing...";
+      });
+    }
 
     FaceRecognitionService.instance.groupSimilarFaces(
       widget.images,
       (progress, stage) {
-        setState(() {
-          _progress = progress;
-          _stage = stage;
-        });
+        if (mounted) {
+          setState(() {
+            _progress = progress;
+            _stage = stage;
+          });
+        }
       },
       (faceGroups) {
-        setState(() {
-          _faceGroups = faceGroups;
-          _isProcessing = false;
-        });
+        if (mounted) {
+          setState(() {
+            _faceGroups = faceGroups;
+            _isProcessing = false;
+          });
+        }
       },
     );
   }
