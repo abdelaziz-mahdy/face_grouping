@@ -148,14 +148,33 @@ class ImageService {
     final img = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
     detector.setInputSize((img.width, img.height));
     final faces = detector.detect(img);
+
     return List.generate(faces.rows, (i) {
+      final x = faces.at<double>(i, 0).toInt();
+      final y = faces.at<double>(i, 1).toInt();
+      final width = faces.at<double>(i, 2).toInt();
+      final height = faces.at<double>(i, 3).toInt();
+
+      // Correct width if it exceeds image boundaries
+      final correctedWidth = (x + width) > img.width ? img.width - x : width;
+
+      // Correct height if it exceeds image boundaries
+      final correctedHeight =
+          (y + height) > img.height ? img.height - y : height;
+
+      // Create the list of raw detection data
+      final rawDetection = List.generate(
+        faces.width,
+        (index) => faces.at<double>(i, index),
+      );
+
       return SendableRect(
-          x: faces.at<double>(i, 0).toInt(),
-          y: faces.at<double>(i, 1).toInt(),
-          width: faces.at<double>(i, 2).toInt(),
-          height: faces.at<double>(i, 3).toInt(),
-          rawDetection: List.generate(
-              faces.width, (index) => faces.at<double>(i, index)));
+        x: x,
+        y: y,
+        width: correctedWidth,
+        height: correctedHeight,
+        rawDetection: rawDetection,
+      );
     });
   }
 }
