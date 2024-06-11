@@ -81,12 +81,8 @@ class FaceRecognitionService {
         // Extract features from the aligned and cropped face
         final feature = recognizer.feature(alignedFace);
         final encodedFace = cv.imencode('.jpg', alignedFace);
-        try {
-          faceFeatures.values
-              .firstWhere((e) => memEquals(e.data, feature.data));
-          print("MATCH FOUND");
-        } catch (e) {}
-        faceFeatures[encodedFace] = feature;
+
+        faceFeatures[encodedFace] = feature.clone();
 
         alignedFace.dispose();
         faceBox.dispose(); // Dispose the faceBox after use
@@ -109,10 +105,6 @@ class FaceRecognitionService {
       for (var group in faceGroups) {
         final representativeImage = group[0];
         final representativeFeature = faceFeatures[representativeImage]!;
-        if (memEquals(faceFeature.data, representativeFeature.data)) {
-          print("skipped matching image");
-          continue;
-        }
 
         // Compare features
         final matchScoreCosine = recognizer.match(
@@ -121,7 +113,7 @@ class FaceRecognitionService {
           cv.FaceRecognizerSF.DIS_TYPR_FR_COSINE,
         );
 
-        if (matchScoreCosine <= 0.363) {
+        if (matchScoreCosine >= 0.363) {
           // Threshold for cosine similarity
           group.add(faceImage);
           added = true;
