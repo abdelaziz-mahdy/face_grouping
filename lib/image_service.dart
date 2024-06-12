@@ -9,14 +9,14 @@ import 'package:path_provider/path_provider.dart';
 
 class SendableRect {
   final int x, y, width, height;
-  final List<double> rawDetection; // Store the raw detection row
+  final List<double> rawDetection;
 
   SendableRect({
     required this.x,
     required this.y,
     required this.width,
     required this.height,
-    required this.rawDetection, // Initialize the new field
+    required this.rawDetection,
   });
 
   cv.Rect toRect() {
@@ -29,7 +29,7 @@ class SendableRect {
       y: rect.y,
       width: rect.width,
       height: rect.height,
-      rawDetection: rawDetection, // Assign the raw detection data
+      rawDetection: rawDetection,
     );
   }
 }
@@ -70,8 +70,9 @@ class ImageService {
 
   Future<List<ImageData>> processDirectory(
     String directoryPath,
-    void Function(double, Duration, int, int) progressCallback,
-  ) async {
+    void Function(double, Duration, int, int) progressCallback, {
+    int numberOfIsolates = 4, // Default to 4 isolates
+  }) async {
     final completer = Completer<List<ImageData>>();
     final receivePort = ReceivePort();
     final startTime = DateTime.now();
@@ -79,11 +80,34 @@ class ImageService {
     final tmpModelPath =
         await _copyAssetFileToTmp("assets/face_detection_yunet_2023mar.onnx");
 
-    Isolate.spawn(
-      _processDirectoryIsolate,
-      _ProcessDirectoryParams(
-          directoryPath, receivePort.sendPort, tmpModelPath),
-    );
+    final dir = Directory(directoryPath);
+    final entities = await dir.list(recursive: true).toList();
+    final imageFiles = entities
+        .where((entity) => entity is File && _isImageFile(entity.path))
+        .toList();
+
+    final totalImages = imageFiles.length;
+    final batchSize = (totalImages / numberOfIsolates).ceil();
+    final results = <ImageData>[];
+
+    for (var i = 0; i < numberOfIsolates; i++) {
+      final start = i * batchSize;
+      final end = (i + 1) * batchSize > totalImages ? totalImages : (i + 1) * batchSize;
+      final batch = imageFiles.sublist(start, end);
+
+      if (batch.isEmpty) continue; // Skip empty batches
+
+      Isolate.spawn(
+        _processDirectoryIsolate,
+        _ProcessDirectoryParams(
+          batch.map((file) => file.path).toList(),
+          receivePort.sendPort,
+          tmpModelPath,
+          start, // Offset to keep track of progress
+          totalImages,
+        ),
+      );
+    }
 
     receivePort.listen((message) {
       if (message is _ProgressMessage) {
@@ -97,42 +121,38 @@ class ImageService {
           message.total,
         );
       } else if (message is List<ImageData>) {
-        completer.complete(message);
-        receivePort.close();
+        results.addAll(message);
+        if (results.length == totalImages) {
+          completer.complete(results);
+          receivePort.close();
+        }
       }
     });
 
     return completer.future;
   }
 
-  static Future<void> _processDirectoryIsolate(
-      _ProcessDirectoryParams params) async {
+  static Future<void> _processDirectoryIsolate(_ProcessDirectoryParams params) async {
     final images = <ImageData>[];
-    final dir = Directory(params.directoryPath);
-    final entities = await dir.list(recursive: true).toList();
-    final imageFiles = entities
-        .where((entity) => entity is File && _isImageFile(entity.path))
-        .toList();
-
     final modelFile = File(params.modelPath);
     final buf = await modelFile.readAsBytes();
     final faceDetector =
         cv.FaceDetectorYN.fromBuffer("onnx", buf, Uint8List(0), (320, 320));
 
-    final totalImages = imageFiles.length;
+    final totalImages = params.imagePaths.length;
 
-    for (var i = 0; i < imageFiles.length; i++) {
-      final entity = imageFiles[i] as File;
-      final sendableRects = await _detectFaces(entity.path, faceDetector);
+    for (var i = 0; i < totalImages; i++) {
+      final imagePath = params.imagePaths[i];
+      final sendableRects = await _detectFaces(imagePath, faceDetector);
 
       images.add(ImageData(
-        path: entity.path,
+        path: imagePath,
         faceCount: sendableRects.length,
         sendableFaceRects: sendableRects,
       ));
 
-      final progress = (i + 1) / totalImages;
-      params.sendPort.send(_ProgressMessage(progress, i + 1, totalImages));
+      final progress = (params.offset + i + 1) / params.total;
+      params.sendPort.send(_ProgressMessage(progress, params.offset + i + 1, params.total));
     }
 
     params.sendPort.send(images);
@@ -180,11 +200,19 @@ class ImageService {
 }
 
 class _ProcessDirectoryParams {
-  final String directoryPath;
+  final List<String> imagePaths;
   final SendPort sendPort;
   final String modelPath;
+  final int offset;
+  final int total;
 
-  _ProcessDirectoryParams(this.directoryPath, this.sendPort, this.modelPath);
+  _ProcessDirectoryParams(
+    this.imagePaths,
+    this.sendPort,
+    this.modelPath,
+    this.offset,
+    this.total,
+  );
 }
 
 class _ProgressMessage {

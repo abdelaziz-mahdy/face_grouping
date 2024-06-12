@@ -2,8 +2,6 @@ import 'dart:async';
 import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:io';
-
-import 'package:face_grouping/mem_equals.dart';
 import 'package:flutter/services.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:path_provider/path_provider.dart';
@@ -12,8 +10,7 @@ import 'image_service.dart';
 class FaceRecognitionService {
   FaceRecognitionService._privateConstructor();
 
-  static final FaceRecognitionService instance =
-      FaceRecognitionService._privateConstructor();
+  static final FaceRecognitionService instance = FaceRecognitionService._privateConstructor();
 
   factory FaceRecognitionService() {
     return instance;
@@ -33,8 +30,7 @@ class FaceRecognitionService {
     void Function(double, String) progressCallback,
     void Function(List<List<Uint8List>>) completionCallback,
   ) async {
-    final tmpModelPath =
-        await _copyAssetFileToTmp("assets/face_recognition_sface_2021dec.onnx");
+    final tmpModelPath = await _copyAssetFileToTmp("assets/face_recognition_sface_2021dec.onnx");
 
     final receivePort = ReceivePort();
 
@@ -53,14 +49,10 @@ class FaceRecognitionService {
     });
   }
 
-  static Future<void> _groupSimilarFacesIsolate(
-    _GroupFacesParams params,
-  ) async {
-    final recognizer =
-        cv.FaceRecognizerSF.newRecognizer(params.modelPath, "", 0, 0);
+  static Future<void> _groupSimilarFacesIsolate(_GroupFacesParams params) async {
+    final recognizer = cv.FaceRecognizerSF.newRecognizer(params.modelPath, "", 0, 0);
     final faceFeatures = <Uint8List, cv.Mat>{};
-    final totalFaces = params.images
-        .fold<int>(0, (sum, image) => sum + image.sendableFaceRects.length);
+    final totalFaces = params.images.fold<int>(0, (sum, image) => sum + image.sendableFaceRects.length);
 
     int processedFaces = 0;
 
@@ -72,8 +64,7 @@ class FaceRecognitionService {
         final mat = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
 
         // Create a bounding box Mat from raw detection data
-        final faceBox = cv.Mat.fromList(1, rect.rawDetection.length,
-            cv.MatType.CV_32FC1, rect.rawDetection);
+        final faceBox = cv.Mat.fromList(1, rect.rawDetection.length, cv.MatType.CV_32FC1, rect.rawDetection);
 
         // Align and crop the face using alignCrop
         final alignedFace = recognizer.alignCrop(mat, faceBox);
@@ -87,8 +78,7 @@ class FaceRecognitionService {
         alignedFace.dispose();
         faceBox.dispose(); // Dispose the faceBox after use
         processedFaces++;
-        params.sendPort.send(_ProgressMessage(
-            processedFaces / totalFaces, "Extracting Features"));
+        params.sendPort.send(_ProgressMessage(processedFaces / totalFaces, "Extracting Features"));
       }
     }
 
@@ -103,23 +93,29 @@ class FaceRecognitionService {
       bool added = false;
 
       for (var group in faceGroups) {
-        final representativeImage = group[0];
-        final representativeFeature = faceFeatures[representativeImage]!;
+        double totalMatchScoreCosine = 0;
+        double totalMatchScoreNormL2 = 0;
 
-        // Compare features
-        final matchScoreCosine = recognizer.match(
-          faceFeature,
-          representativeFeature,
-          cv.FaceRecognizerSF.DIS_TYPR_FR_COSINE,
-        );
-        // Compare features
-        final matchScoreNormL2 = recognizer.match(
-          faceFeature,
-          representativeFeature,
-          cv.FaceRecognizerSF.DIS_TYPE_FR_NORM_L2,
-        );
-        if (matchScoreCosine >= 0.39 && matchScoreNormL2 <= 1.1) {
-          // Threshold for cosine similarity
+        // Compare the new face feature with each member in the group
+        for (var existingFace in group) {
+          final existingFeature = faceFeatures[existingFace]!;
+          totalMatchScoreCosine += recognizer.match(
+            faceFeature,
+            existingFeature,
+            cv.FaceRecognizerSF.DIS_TYPR_FR_COSINE,
+          );
+          totalMatchScoreNormL2 += recognizer.match(
+            faceFeature,
+            existingFeature,
+            cv.FaceRecognizerSF.DIS_TYPE_FR_NORM_L2,
+          );
+        }
+
+        // Average the match scores
+        final averageMatchScoreCosine = totalMatchScoreCosine / group.length;
+        final averageMatchScoreNormL2 = totalMatchScoreNormL2 / group.length;
+
+        if (averageMatchScoreCosine >= 0.38 && averageMatchScoreNormL2 <= 1.12) { // Thresholds for similarity
           group.add(faceImage);
           added = true;
           break;
@@ -131,8 +127,7 @@ class FaceRecognitionService {
       }
 
       processedFaces++;
-      params.sendPort.send(
-          _ProgressMessage(processedFaces / totalFaces, "Grouping Faces"));
+      params.sendPort.send(_ProgressMessage(processedFaces / totalFaces, "Grouping Faces"));
     }
 
     recognizer.dispose();
