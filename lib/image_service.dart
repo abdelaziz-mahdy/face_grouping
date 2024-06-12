@@ -71,12 +71,13 @@ class ImageService {
   Future<List<ImageData>> processDirectory(
     String directoryPath,
     void Function(double, Duration, int, int) progressCallback, {
-    int numberOfIsolates = 4, // Default to 4 isolates
+    int? numberOfIsolates, // Default to the number of CPU cores
   }) async {
     final completer = Completer<List<ImageData>>();
     final receivePort = ReceivePort();
     final startTime = DateTime.now();
-
+    final _numberOfIsolates =
+        numberOfIsolates ?? (Platform.numberOfProcessors );
     final tmpModelPath =
         await _copyAssetFileToTmp("assets/face_detection_yunet_2023mar.onnx");
 
@@ -87,12 +88,19 @@ class ImageService {
         .toList();
 
     final totalImages = imageFiles.length;
-    final batchSize = (totalImages / numberOfIsolates).ceil();
+    final batchSize = (totalImages / _numberOfIsolates).ceil();
     final results = <ImageData>[];
+    final progressMap =
+        List.filled(_numberOfIsolates, 0.0); // Track progress of each isolate
+    final processedImagesMap = List.filled(
+        _numberOfIsolates, 0); // Track processed count for each isolate
+    int overallProcessedImages =
+        0; // Total processed images across all isolates
 
-    for (var i = 0; i < numberOfIsolates; i++) {
+    for (var i = 0; i < _numberOfIsolates; i++) {
       final start = i * batchSize;
-      final end = (i + 1) * batchSize > totalImages ? totalImages : (i + 1) * batchSize;
+      final end =
+          (i + 1) * batchSize > totalImages ? totalImages : (i + 1) * batchSize;
       final batch = imageFiles.sublist(start, end);
 
       if (batch.isEmpty) continue; // Skip empty batches
@@ -103,7 +111,7 @@ class ImageService {
           batch.map((file) => file.path).toList(),
           receivePort.sendPort,
           tmpModelPath,
-          start, // Offset to keep track of progress
+          i, // Isolate index
           totalImages,
         ),
       );
@@ -111,14 +119,27 @@ class ImageService {
 
     receivePort.listen((message) {
       if (message is _ProgressMessage) {
+        progressMap[message.isolateIndex] =
+            message.progress; // Update progress for the specific isolate
+        processedImagesMap[message.isolateIndex] = message
+            .processed; // Update processed count for the specific isolate
+
+        // Calculate overall progress
+        final overallProgress =
+            progressMap.reduce((a, b) => a + b) / _numberOfIsolates;
+
+        // Calculate the total processed images across all isolates
+        overallProcessedImages = processedImagesMap.reduce((a, b) => a + b);
+
         final elapsed = DateTime.now().difference(startTime);
-        final estimatedTotalTime = elapsed * (1 / message.progress);
+        final estimatedTotalTime = elapsed * (1 / overallProgress);
         final remainingTime = estimatedTotalTime - elapsed;
+
         progressCallback(
-          message.progress,
+          overallProgress,
           remainingTime,
-          message.processed,
-          message.total,
+          overallProcessedImages,
+          totalImages,
         );
       } else if (message is List<ImageData>) {
         results.addAll(message);
@@ -132,7 +153,8 @@ class ImageService {
     return completer.future;
   }
 
-  static Future<void> _processDirectoryIsolate(_ProcessDirectoryParams params) async {
+  static Future<void> _processDirectoryIsolate(
+      _ProcessDirectoryParams params) async {
     final images = <ImageData>[];
     final modelFile = File(params.modelPath);
     final buf = await modelFile.readAsBytes();
@@ -151,8 +173,13 @@ class ImageService {
         sendableFaceRects: sendableRects,
       ));
 
-      final progress = (params.offset + i + 1) / params.total;
-      params.sendPort.send(_ProgressMessage(progress, params.offset + i + 1, params.total));
+      final progress = (i + 1) / totalImages;
+      params.sendPort.send(_ProgressMessage(
+        progress,
+        i + 1,
+        totalImages,
+        params.isolateIndex, // Pass the isolate index for tracking
+      ));
     }
 
     params.sendPort.send(images);
@@ -203,14 +230,14 @@ class _ProcessDirectoryParams {
   final List<String> imagePaths;
   final SendPort sendPort;
   final String modelPath;
-  final int offset;
+  final int isolateIndex; // Index of the isolate
   final int total;
 
   _ProcessDirectoryParams(
     this.imagePaths,
     this.sendPort,
     this.modelPath,
-    this.offset,
+    this.isolateIndex,
     this.total,
   );
 }
@@ -219,6 +246,8 @@ class _ProgressMessage {
   final double progress;
   final int processed;
   final int total;
+  final int isolateIndex; // Index of the isolate
 
-  _ProgressMessage(this.progress, this.processed, this.total);
+  _ProgressMessage(
+      this.progress, this.processed, this.total, this.isolateIndex);
 }
