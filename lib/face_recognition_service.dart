@@ -112,8 +112,13 @@ class FaceRecognitionService {
           representativeFeature,
           cv.FaceRecognizerSF.DIS_TYPR_FR_COSINE,
         );
-
-        if (matchScoreCosine >= 0.363) {
+        // Compare features
+        final matchScoreNormL2 = recognizer.match(
+          faceFeature,
+          representativeFeature,
+          cv.FaceRecognizerSF.DIS_TYPE_FR_NORM_L2,
+        );
+        if (matchScoreCosine >= 0.39 && matchScoreNormL2 <= 1.1) {
           // Threshold for cosine similarity
           group.add(faceImage);
           added = true;
