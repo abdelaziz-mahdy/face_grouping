@@ -224,8 +224,8 @@ class ImageService {
         rawDetection: rawDetection,
       );
     });
-    img.dispose();
-    faces.dispose();
+    // img.dispose();
+    // faces.dispose();
     return returnValue;
   }
 }
