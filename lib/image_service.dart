@@ -166,7 +166,7 @@ class ImageService {
 
     for (var i = 0; i < totalImages; i++) {
       final imagePath = params.imagePaths[i];
-      final sendableRects = await _detectFaces(imagePath, faceDetector);
+      final sendableRects = _detectFaces(imagePath, faceDetector);
 
       images.add(ImageData(
         path: imagePath,
@@ -184,6 +184,7 @@ class ImageService {
     }
 
     params.sendPort.send(images);
+    faceDetector.dispose();
   }
 
   static bool _isImageFile(String path) {
@@ -191,13 +192,12 @@ class ImageService {
         .any((ext) => path.toLowerCase().endsWith(ext));
   }
 
-  static Future<List<SendableRect>> _detectFaces(
-      String imagePath, cv.FaceDetectorYN detector) async {
+  static List<SendableRect> _detectFaces(
+      String imagePath, cv.FaceDetectorYN detector) {
     final img = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
     detector.setInputSize((img.width, img.height));
     final faces = detector.detect(img);
-
-    return List.generate(faces.rows, (i) {
+    final returnValue = List.generate(faces.rows, (i) {
       final x = faces.at<double>(i, 0).toInt();
       final y = faces.at<double>(i, 1).toInt();
       final width = faces.at<double>(i, 2).toInt();
@@ -224,6 +224,9 @@ class ImageService {
         rawDetection: rawDetection,
       );
     });
+    img.dispose();
+    faces.dispose();
+    return returnValue;
   }
 }
 
