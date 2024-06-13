@@ -71,13 +71,13 @@ class ImageService {
   Future<List<ImageData>> processDirectory(
     String directoryPath,
     void Function(double, Duration, int, int) progressCallback, {
-    int? numberOfIsolates, // Default to the number of CPU cores
+    int? numberOfIsolates = 5, // Default to the number of CPU cores
   }) async {
     final completer = Completer<List<ImageData>>();
     final receivePort = ReceivePort();
     final startTime = DateTime.now();
     final _numberOfIsolates =
-        numberOfIsolates ?? (Platform.numberOfProcessors );
+        numberOfIsolates ?? (Platform.numberOfProcessors - 2);
     final tmpModelPath =
         await _copyAssetFileToTmp("assets/face_detection_yunet_2023mar.onnx");
 
@@ -118,7 +118,8 @@ class ImageService {
     }
 
     receivePort.listen((message) {
-      if (message is _ProgressMessage) {
+      print("GOT ${message}");
+      if (message is ProgressMessage) {
         progressMap[message.isolateIndex] =
             message.progress; // Update progress for the specific isolate
         processedImagesMap[message.isolateIndex] = message
@@ -174,7 +175,7 @@ class ImageService {
       ));
 
       final progress = (i + 1) / totalImages;
-      params.sendPort.send(_ProgressMessage(
+      params.sendPort.send(ProgressMessage(
         progress,
         i + 1,
         totalImages,
@@ -242,12 +243,11 @@ class _ProcessDirectoryParams {
   );
 }
 
-class _ProgressMessage {
+class ProgressMessage {
   final double progress;
   final int processed;
   final int total;
   final int isolateIndex; // Index of the isolate
 
-  _ProgressMessage(
-      this.progress, this.processed, this.total, this.isolateIndex);
+  ProgressMessage(this.progress, this.processed, this.total, this.isolateIndex);
 }
