@@ -53,8 +53,12 @@ class FaceRecognitionService {
 
   static Future<void> _groupSimilarFacesIsolate(
       _GroupFacesParams params) async {
-    final recognizer =
-        cv.FaceRecognizerSF.newRecognizer(params.modelPath, "", 0, 0);
+    final recognizer = cv.FaceRecognizerSF.fromFile(
+      params.modelPath,
+      "",
+      backendId: cv.DNN_BACKEND_OPENCV,
+      targetId: cv.DNN_TARGET_OPENCL,
+    );
     final faceFeatures = <Uint8List, cv.Mat>{};
     final totalFaces = params.images
         .fold<int>(0, (sum, image) => sum + image.sendableFaceRects.length);

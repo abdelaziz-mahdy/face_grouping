@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
@@ -71,13 +72,13 @@ class ImageService {
   Future<List<ImageData>> processDirectory(
     String directoryPath,
     void Function(double, Duration, int, int) progressCallback, {
-    int? numberOfIsolates = 5, // Default to the number of CPU cores
+    int numberOfIsolates = 6, // Default to the number of CPU cores
   }) async {
     final completer = Completer<List<ImageData>>();
     final receivePort = ReceivePort();
     final startTime = DateTime.now();
-    final _numberOfIsolates =
-        numberOfIsolates ?? (Platform.numberOfProcessors - 2);
+    final _numberOfIsolates = numberOfIsolates;
+
     final tmpModelPath =
         await _copyAssetFileToTmp("assets/face_detection_yunet_2023mar.onnx");
 
@@ -159,8 +160,14 @@ class ImageService {
     final images = <ImageData>[];
     final modelFile = File(params.modelPath);
     final buf = await modelFile.readAsBytes();
-    final faceDetector =
-        cv.FaceDetectorYN.fromBuffer("onnx", buf, Uint8List(0), (320, 320));
+    final faceDetector = cv.FaceDetectorYN.fromBuffer(
+      "onnx",
+      buf,
+      Uint8List(0),
+      (320, 320),
+      backendId: cv.DNN_BACKEND_OPENCV,
+      targetId: cv.DNN_TARGET_OPENCL,
+    );
 
     final totalImages = params.imagePaths.length;
 
