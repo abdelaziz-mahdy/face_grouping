@@ -13,7 +13,7 @@ class FacesTab extends StatelessWidget {
     super.key,
     required this.images,
     required this.isProcessing,
-    this.useCompute = false, // Default to using compute for better performance
+    this.useCompute = true, // Default to using compute for better performance
   });
 
   @override

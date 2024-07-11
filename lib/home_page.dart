@@ -4,6 +4,7 @@ import 'faces_tab.dart';
 import 'similar_faces_tab.dart';
 import 'package:file_picker/file_picker.dart';
 import 'image_service.dart';
+import 'face_recognition_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -19,6 +20,7 @@ class _HomePageState extends State<HomePage> {
   Duration _timeRemaining = Duration.zero;
   int _processedImages = 0;
   int _totalImages = 0;
+  List<List<Map<String, dynamic>>> _faceGroups = [];
 
   void _selectDirectory() async {
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
@@ -30,6 +32,7 @@ class _HomePageState extends State<HomePage> {
           _timeRemaining = Duration.zero;
           _processedImages = 0;
           _totalImages = 0;
+          _faceGroups = [];
         });
       }
 
@@ -46,6 +49,31 @@ class _HomePageState extends State<HomePage> {
           }
         },
       );
+
+      FaceRecognitionService.instance.groupSimilarFaces(
+        images,
+        (progress, stage, processedFaces, totalFaces, timeRemaining) {
+          if (mounted) {
+            setState(() {
+              _progress = progress;
+              // _stage = stage;
+              _processedImages = processedFaces;
+              _totalImages = totalFaces;
+              _timeRemaining = timeRemaining;
+            });
+          }
+        },
+        (faceGroups) {
+          if (mounted) {
+            setState(() {
+              _faceGroups = faceGroups;
+              _isProcessing = false;
+              // _estimatedTimeRemaining = null;
+            });
+          }
+        },
+      );
+
       if (mounted) {
         setState(() {
           _images = images;
@@ -81,7 +109,7 @@ class _HomePageState extends State<HomePage> {
               images: _images,
             ),
             FacesTab(images: _images, isProcessing: _isProcessing),
-            SimilarFacesTab(images: _images),
+            SimilarFacesTab(images: _images, faceGroups: _faceGroups),
           ],
         ),
         floatingActionButton: FloatingActionButton(

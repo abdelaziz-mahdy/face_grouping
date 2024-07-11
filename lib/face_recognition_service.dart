@@ -6,12 +6,12 @@ import 'package:flutter/services.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:path_provider/path_provider.dart';
 import 'image_service.dart';
+import 'dart:convert';
 
 class FaceRecognitionService {
   FaceRecognitionService._privateConstructor();
 
-  static final FaceRecognitionService instance =
-      FaceRecognitionService._privateConstructor();
+  static final FaceRecognitionService instance = FaceRecognitionService._privateConstructor();
 
   factory FaceRecognitionService() {
     return instance;
@@ -28,13 +28,13 @@ class FaceRecognitionService {
 
   Future<void> groupSimilarFaces(
     List<ImageData> images,
-    void Function(double, String) progressCallback,
-    void Function(List<List<Uint8List>>) completionCallback,
+    void Function(double, String, int, int, Duration) progressCallback,
+    void Function(List<List<Map<String, dynamic>>>) completionCallback,
   ) async {
-    final tmpModelPath =
-        await _copyAssetFileToTmp("assets/face_recognition_sface_2021dec.onnx");
+    final tmpModelPath = await _copyAssetFileToTmp("assets/face_recognition_sface_2021dec.onnx");
 
     final receivePort = ReceivePort();
+    final startTime = DateTime.now();
 
     Isolate.spawn(
       _groupSimilarFacesIsolate,
@@ -43,16 +43,20 @@ class FaceRecognitionService {
 
     receivePort.listen((message) {
       if (message is _ProgressMessage) {
-        progressCallback(message.progress, message.stage);
-      } else if (message is List<List<Uint8List>>) {
+        final elapsed = DateTime.now().difference(startTime);
+        final estimatedTotalTime = elapsed * (1 / message.progress);
+        final remainingTime = estimatedTotalTime - elapsed;
+
+        progressCallback(message.progress, message.stage, message.processedFaces, message.totalFaces, remainingTime);
+      } else if (message is List<List<Map<String, dynamic>>>) {
+        saveGroupedFacesResult(message); // Save the results for future usage
         completionCallback(message);
         receivePort.close();
       }
     });
   }
 
-  static Future<void> _groupSimilarFacesIsolate(
-      _GroupFacesParams params) async {
+  static Future<void> _groupSimilarFacesIsolate(_GroupFacesParams params) async {
     final recognizer = cv.FaceRecognizerSF.fromFile(
       params.modelPath,
       "",
@@ -60,8 +64,8 @@ class FaceRecognitionService {
       targetId: cv.DNN_TARGET_OPENCL,
     );
     final faceFeatures = <Uint8List, cv.Mat>{};
-    final totalFaces = params.images
-        .fold<int>(0, (sum, image) => sum + image.sendableFaceRects.length);
+    final faceInfoMap = <Uint8List, Map<String, dynamic>>{};
+    final totalFaces = params.images.fold<int>(0, (sum, image) => sum + image.sendableFaceRects.length);
 
     int processedFaces = 0;
 
@@ -73,8 +77,7 @@ class FaceRecognitionService {
         final mat = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
 
         // Create a bounding box Mat from raw detection data
-        final faceBox = cv.Mat.fromList(1, rect.rawDetection.length,
-            cv.MatType.CV_32FC1, rect.rawDetection);
+        final faceBox = cv.Mat.fromList(1, rect.rawDetection.length, cv.MatType.CV_32FC1, rect.rawDetection);
 
         // Align and crop the face using alignCrop
         final alignedFace = recognizer.alignCrop(mat, faceBox);
@@ -84,16 +87,19 @@ class FaceRecognitionService {
         final encodedFace = cv.imencode('.jpg', alignedFace);
 
         faceFeatures[encodedFace] = feature.clone();
+        faceInfoMap[encodedFace] = {
+          'originalImagePath': rect.originalImagePath,
+          'rect': rect,
+        };
 
         alignedFace.dispose();
         faceBox.dispose(); // Dispose the faceBox after use
         processedFaces++;
-        params.sendPort.send(_ProgressMessage(
-            processedFaces / totalFaces, "Extracting Features"));
+        params.sendPort.send(_ProgressMessage(processedFaces / totalFaces, "Extracting Features", processedFaces, totalFaces));
       }
     }
 
-    final faceGroups = <List<Uint8List>>[];
+    final faceGroups = <List<Map<String, dynamic>>>[];
     processedFaces = 0; // Reset processedFaces for the next phase
 
     // Phase 2: Group similar faces
@@ -109,7 +115,7 @@ class FaceRecognitionService {
 
         // Compare the new face feature with each member in the group
         for (var existingFace in group) {
-          final existingFeature = faceFeatures[existingFace]!;
+          final existingFeature = faceFeatures[existingFace['faceImage']]!;
           totalMatchScoreCosine += recognizer.match(
             faceFeature,
             existingFeature,
@@ -126,26 +132,58 @@ class FaceRecognitionService {
         final averageMatchScoreCosine = totalMatchScoreCosine / group.length;
         final averageMatchScoreNormL2 = totalMatchScoreNormL2 / group.length;
 
-        if (averageMatchScoreCosine >= 0.38 &&
-            averageMatchScoreNormL2 <= 1.12) {
+        if (averageMatchScoreCosine >= 0.38 && averageMatchScoreNormL2 <= 1.12) {
           // Thresholds for similarity
-          group.add(faceImage);
+          group.add({
+            'faceImage': faceImage,
+            'originalImagePath': faceInfoMap[faceImage]!['originalImagePath'],
+            'rect': faceInfoMap[faceImage]!['rect'],
+          });
           added = true;
           break;
         }
       }
 
       if (!added) {
-        faceGroups.add([faceImage]);
+        faceGroups.add([
+          {
+            'faceImage': faceImage,
+            'originalImagePath': faceInfoMap[faceImage]!['originalImagePath'],
+            'rect': faceInfoMap[faceImage]!['rect'],
+          }
+        ]);
       }
 
       processedFaces++;
-      params.sendPort.send(
-          _ProgressMessage(processedFaces / totalFaces, "Grouping Faces"));
+      params.sendPort.send(_ProgressMessage(processedFaces / totalFaces, "Grouping Faces", processedFaces, totalFaces));
     }
 
     recognizer.dispose();
     params.sendPort.send(faceGroups);
+  }
+
+  Future<void> saveGroupedFacesResult(List<List<Map<String, dynamic>>> faceGroups) async {
+    final directory = await getApplicationDocumentsDirectory();
+    final filePath = '${directory.path}/grouped_faces.json';
+    final file = File(filePath);
+
+    final jsonString = jsonEncode(faceGroups);
+    await file.writeAsString(jsonString);
+  }
+
+  Future<List<List<Map<String, dynamic>>>> loadGroupedFacesResult() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final filePath = '${directory.path}/grouped_faces.json';
+    final file = File(filePath);
+
+    if (await file.exists()) {
+      final jsonString = await file.readAsString();
+      final List<dynamic> jsonData = jsonDecode(jsonString);
+
+      return jsonData.map((group) => (group as List<dynamic>).map((face) => Map<String, dynamic>.from(face)).toList()).toList();
+    } else {
+      return [];
+    }
   }
 }
 
@@ -160,6 +198,8 @@ class _GroupFacesParams {
 class _ProgressMessage {
   final double progress;
   final String stage;
+  final int processedFaces;
+  final int totalFaces;
 
-  _ProgressMessage(this.progress, this.stage);
+  _ProgressMessage(this.progress, this.stage, this.processedFaces, this.totalFaces);
 }
