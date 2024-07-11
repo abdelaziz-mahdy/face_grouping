@@ -1,3 +1,4 @@
+// lib/similar_faces_tab.dart
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'face_recognition_service.dart';
@@ -86,9 +87,6 @@ class _SimilarFacesTabState extends State<SimilarFacesTab> {
   }
 
   Future<Uint8List> _decodeFaceImage(Uint8List encodedFaceImage) async {
-    // Decode the face image as needed
-    // Since we are dynamically rendering, we may not need to do any heavy operations here
-    // This placeholder can be expanded based on specific requirements
     return encodedFaceImage;
   }
 

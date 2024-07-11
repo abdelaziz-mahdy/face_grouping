@@ -1,12 +1,11 @@
+// lib/image_service.dart
 import 'dart:async';
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:typed_data';
-
 import 'package:flutter/services.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:path_provider/path_provider.dart';
+import 'isolate_utils.dart';
 
 class SendableRect {
   final int x, y, width, height;
@@ -75,81 +74,32 @@ class ImageService {
   Future<List<ImageData>> processDirectory(
     String directoryPath,
     void Function(double, Duration, int, int) progressCallback, {
-    int numberOfIsolates = 6, // Default to the number of CPU cores
+    int numberOfIsolates = 6,
   }) async {
-    final completer = Completer<List<ImageData>>();
-    final receivePort = ReceivePort();
-    final startTime = DateTime.now();
-    final _numberOfIsolates = numberOfIsolates;
-
     final tmpModelPath = await _copyAssetFileToTmp("assets/face_detection_yunet_2023mar.onnx");
-
-    final dir = Directory(directoryPath);
-    final entities = await dir.list(recursive: true).toList();
+    final directory = Directory(directoryPath);
+    final entities = await directory.list(recursive: true).toList();
     final imageFiles = entities.where((entity) => entity is File && _isImageFile(entity.path)).toList();
-
     final totalImages = imageFiles.length;
-    final batchSize = (totalImages / _numberOfIsolates).ceil();
-    final results = <ImageData>[];
-    final progressMap = List.filled(_numberOfIsolates, 0.0); // Track progress of each isolate
-    final processedImagesMap = List.filled(_numberOfIsolates, 0); // Track processed count for each isolate
-    int overallProcessedImages = 0; // Total processed images across all isolates
 
-    for (var i = 0; i < _numberOfIsolates; i++) {
-      final start = i * batchSize;
-      final end = (i + 1) * batchSize > totalImages ? totalImages : (i + 1) * batchSize;
-      final batch = imageFiles.sublist(start, end);
+    final results = await IsolateUtils.runIsolate<String, ImageData>(
+      data: imageFiles.map((e) => e.path).toList(),
+      numberOfIsolates: numberOfIsolates,
+      isolateEntryPoint: (data, sendPort) => _processDirectoryIsolate(data, sendPort, tmpModelPath),
+      progressCallback: (progress, processed, total, remaining) => progressCallback(progress, remaining, processed, total),
+      completionCallback: (results) {},
+    );
 
-      if (batch.isEmpty) continue; // Skip empty batches
-
-      Isolate.spawn(
-        _processDirectoryIsolate,
-        _ProcessDirectoryParams(
-          batch.map((file) => file.path).toList(),
-          receivePort.sendPort,
-          tmpModelPath,
-          i, // Isolate index
-          totalImages,
-        ),
-      );
-    }
-
-    receivePort.listen((message) {
-      if (message is ProgressMessage) {
-        progressMap[message.isolateIndex] = message.progress; // Update progress for the specific isolate
-        processedImagesMap[message.isolateIndex] = message.processed; // Update processed count for the specific isolate
-
-        // Calculate overall progress
-        final overallProgress = progressMap.reduce((a, b) => a + b) / _numberOfIsolates;
-
-        // Calculate the total processed images across all isolates
-        overallProcessedImages = processedImagesMap.reduce((a, b) => a + b);
-
-        final elapsed = DateTime.now().difference(startTime);
-        final estimatedTotalTime = elapsed * (1 / overallProgress);
-        final remainingTime = estimatedTotalTime - elapsed;
-
-        progressCallback(
-          overallProgress,
-          remainingTime,
-          overallProcessedImages,
-          totalImages,
-        );
-      } else if (message is List<ImageData>) {
-        results.addAll(message);
-        if (results.length == totalImages) {
-          completer.complete(results);
-          receivePort.close();
-        }
-      }
-    });
-
-    return completer.future;
+    return results;
   }
 
-  static Future<void> _processDirectoryIsolate(_ProcessDirectoryParams params) async {
+  static Future<void> _processDirectoryIsolate(
+    List<String> imagePaths,
+    SendPort sendPort,
+    String modelPath,
+  ) async {
     final images = <ImageData>[];
-    final modelFile = File(params.modelPath);
+    final modelFile = File(modelPath);
     final buf = await modelFile.readAsBytes();
     final faceDetector = cv.FaceDetectorYN.fromBuffer(
       "onnx",
@@ -160,10 +110,10 @@ class ImageService {
       targetId: cv.DNN_TARGET_OPENCL,
     );
 
-    final totalImages = params.imagePaths.length;
+    final totalImages = imagePaths.length;
 
     for (var i = 0; i < totalImages; i++) {
-      final imagePath = params.imagePaths[i];
+      final imagePath = imagePaths[i];
       final sendableRects = _detectFaces(imagePath, faceDetector);
 
       images.add(ImageData(
@@ -173,15 +123,15 @@ class ImageService {
       ));
 
       final progress = (i + 1) / totalImages;
-      params.sendPort.send(ProgressMessage(
+      sendPort.send(ProgressMessage(
         progress,
         i + 1,
         totalImages,
-        params.isolateIndex, // Pass the isolate index for tracking
+        0, // Isolate index is not needed in this context
       ));
     }
 
-    params.sendPort.send(images);
+    sendPort.send(images);
     faceDetector.dispose();
   }
 
@@ -198,18 +148,9 @@ class ImageService {
       final y = faces.at<double>(i, 1).toInt();
       final width = faces.at<double>(i, 2).toInt();
       final height = faces.at<double>(i, 3).toInt();
-
-      // Correct width if it exceeds image boundaries
       final correctedWidth = (x + width) > img.width ? img.width - x : width;
-
-      // Correct height if it exceeds image boundaries
       final correctedHeight = (y + height) > img.height ? img.height - y : height;
-
-      // Create the list of raw detection data
-      final rawDetection = List.generate(
-        faces.width,
-        (index) => faces.at<double>(i, index),
-      );
+      final rawDetection = List.generate(faces.width, (index) => faces.at<double>(i, index));
 
       return SendableRect(
         x: x,
@@ -225,27 +166,11 @@ class ImageService {
   }
 }
 
-class _ProcessDirectoryParams {
-  final List<String> imagePaths;
-  final SendPort sendPort;
-  final String modelPath;
-  final int isolateIndex; // Index of the isolate
-  final int total;
-
-  _ProcessDirectoryParams(
-    this.imagePaths,
-    this.sendPort,
-    this.modelPath,
-    this.isolateIndex,
-    this.total,
-  );
-}
-
 class ProgressMessage {
   final double progress;
   final int processed;
   final int total;
-  final int isolateIndex; // Index of the isolate
+  final int isolateIndex;
 
   ProgressMessage(this.progress, this.processed, this.total, this.isolateIndex);
 }

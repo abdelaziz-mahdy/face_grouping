@@ -1,3 +1,4 @@
+// lib/home_page.dart
 import 'package:flutter/material.dart';
 import 'images_tab.dart';
 import 'faces_tab.dart';
@@ -56,7 +57,6 @@ class _HomePageState extends State<HomePage> {
           if (mounted) {
             setState(() {
               _progress = progress;
-              // _stage = stage;
               _processedImages = processedFaces;
               _totalImages = totalFaces;
               _timeRemaining = timeRemaining;
@@ -68,7 +68,6 @@ class _HomePageState extends State<HomePage> {
             setState(() {
               _faceGroups = faceGroups;
               _isProcessing = false;
-              // _estimatedTimeRemaining = null;
             });
           }
         },
