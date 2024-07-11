@@ -13,7 +13,7 @@ class FacesTab extends StatelessWidget {
     super.key,
     required this.images,
     required this.isProcessing,
-    this.useCompute = true, // Default to using compute for better performance
+    this.useCompute = false, // Default to using compute for better performance
   });
 
   @override
@@ -34,11 +34,8 @@ class FacesTab extends StatelessWidget {
           : faceRectsAndPaths.isEmpty
               ? const Text('No faces detected')
               : GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 4,
-                    mainAxisSpacing: 4,
-                  ),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 50),
                   itemCount: faceRectsAndPaths.length,
                   itemBuilder: (context, index) {
                     final faceInfo = faceRectsAndPaths[index];
