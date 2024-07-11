@@ -25,7 +25,8 @@ class SendableRect {
     return cv.Rect(x, y, width, height);
   }
 
-  static SendableRect fromRect(cv.Rect rect, List<double> rawDetection, String originalImagePath) {
+  static SendableRect fromRect(
+      cv.Rect rect, List<double> rawDetection, String originalImagePath) {
     return SendableRect(
       x: rect.x,
       y: rect.y,
@@ -76,17 +77,22 @@ class ImageService {
     void Function(double, Duration, int, int) progressCallback, {
     int numberOfIsolates = 6,
   }) async {
-    final tmpModelPath = await _copyAssetFileToTmp("assets/face_detection_yunet_2023mar.onnx");
+    final tmpModelPath =
+        await _copyAssetFileToTmp("assets/face_detection_yunet_2023mar.onnx");
     final directory = Directory(directoryPath);
     final entities = await directory.list(recursive: true).toList();
-    final imageFiles = entities.where((entity) => entity is File && _isImageFile(entity.path)).toList();
+    final imageFiles = entities
+        .where((entity) => entity is File && _isImageFile(entity.path))
+        .toList();
     final totalImages = imageFiles.length;
 
     final results = await IsolateUtils.runIsolate<String, ImageData>(
       data: imageFiles.map((e) => e.path).toList(),
       numberOfIsolates: numberOfIsolates,
-      isolateEntryPoint: (data, sendPort) => _processDirectoryIsolate(data, sendPort, tmpModelPath),
-      progressCallback: (progress, processed, total, remaining) => progressCallback(progress, remaining, processed, total),
+      isolateEntryPoint: (data, sendPort) =>
+          _processDirectoryIsolate(data, sendPort, tmpModelPath),
+      progressCallback: (progress, processed, total, remaining) =>
+          progressCallback(progress, remaining, processed, total),
       completionCallback: (results) {},
     );
 
@@ -111,7 +117,7 @@ class ImageService {
     );
 
     final totalImages = imagePaths.length;
-
+    print("test");
     for (var i = 0; i < totalImages; i++) {
       final imagePath = imagePaths[i];
       final sendableRects = _detectFaces(imagePath, faceDetector);
@@ -123,12 +129,7 @@ class ImageService {
       ));
 
       final progress = (i + 1) / totalImages;
-      sendPort.send(ProgressMessage(
-        progress,
-        i + 1,
-        totalImages,
-        0, // Isolate index is not needed in this context
-      ));
+      sendPort.send([progress, i + 1, totalImages]);
     }
 
     sendPort.send(images);
@@ -136,10 +137,12 @@ class ImageService {
   }
 
   static bool _isImageFile(String path) {
-    return ['.jpg', '.jpeg', '.png', '.bmp'].any((ext) => path.toLowerCase().endsWith(ext));
+    return ['.jpg', '.jpeg', '.png', '.bmp']
+        .any((ext) => path.toLowerCase().endsWith(ext));
   }
 
-  static List<SendableRect> _detectFaces(String imagePath, cv.FaceDetectorYN detector) {
+  static List<SendableRect> _detectFaces(
+      String imagePath, cv.FaceDetectorYN detector) {
     final img = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
     detector.setInputSize((img.width, img.height));
     final faces = detector.detect(img);
@@ -149,8 +152,10 @@ class ImageService {
       final width = faces.at<double>(i, 2).toInt();
       final height = faces.at<double>(i, 3).toInt();
       final correctedWidth = (x + width) > img.width ? img.width - x : width;
-      final correctedHeight = (y + height) > img.height ? img.height - y : height;
-      final rawDetection = List.generate(faces.width, (index) => faces.at<double>(i, index));
+      final correctedHeight =
+          (y + height) > img.height ? img.height - y : height;
+      final rawDetection =
+          List.generate(faces.width, (index) => faces.at<double>(i, index));
 
       return SendableRect(
         x: x,

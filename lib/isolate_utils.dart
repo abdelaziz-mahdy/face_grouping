@@ -1,4 +1,3 @@
-// lib/isolate_utils.dart
 import 'dart:async';
 import 'dart:isolate';
 
@@ -12,10 +11,8 @@ class IsolateUtils {
   }) async {
     final receivePort = ReceivePort();
     final startTime = DateTime.now();
-
     final int totalItems = data.length;
     final int batchSize = (totalItems / numberOfIsolates).ceil();
-
     final List<R> results = [];
     int processedItems = 0;
 
@@ -48,11 +45,10 @@ class IsolateUtils {
         }
       }
     }
-
     return results;
   }
 
-  static void _isolateWrapper<T, R>(_IsolateParams<T, R> params) {
+  static void _isolateWrapper<T, R>(_IsolateParams<T, R> params) async {
     params.isolateEntryPoint(params.data, params.sendPort);
   }
 }
