@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'image_service.dart';
+import '../services/image_service.dart';
 
 class GroupFacesDetailScreen extends StatelessWidget {
   final List<Map<String, dynamic>> faceGroup;

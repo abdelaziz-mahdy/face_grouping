@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'face_recognition_controller.dart';
+import '../../controllers/face_detection_controller.dart';
 
 class ImagesTab extends StatelessWidget {
-  final FaceRecognitionController controller;
+  final FaceDetectionController controller;
 
   const ImagesTab({Key? key, required this.controller}) : super(key: key);
 

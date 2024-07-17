@@ -1,10 +1,10 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'face_recognition_controller.dart';
-import 'group_faces_detail_screen.dart';
+import '../../controllers/face_grouping_controller.dart';
+import '../group_faces_detail_screen.dart';
 
 class SimilarFacesTab extends StatelessWidget {
-  final FaceRecognitionController controller;
+  final FaceGroupingController controller;
 
   const SimilarFacesTab({required this.controller, super.key});
 

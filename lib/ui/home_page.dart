@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'face_recognition_controller.dart';
-import 'images_tab.dart';
-import 'faces_tab.dart';
-import 'similar_faces_tab.dart';
+import '../controllers/face_detection_controller.dart';
+import '../controllers/face_grouping_controller.dart';
+import 'tabs/images_tab.dart';
+import 'tabs/faces_tab.dart';
+import 'tabs/similar_faces_tab.dart';
 import 'package:file_picker/file_picker.dart';
 
 class HomePage extends StatelessWidget {
@@ -11,8 +12,11 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => FaceRecognitionController(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => FaceDetectionController()),
+        ChangeNotifierProvider(create: (_) => FaceGroupingController()),
+      ],
       child: const HomePageContent(),
     );
   }
@@ -23,7 +27,8 @@ class HomePageContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final controller = Provider.of<FaceRecognitionController>(context);
+    final faceDetectionController = Provider.of<FaceDetectionController>(context);
+    final faceGroupingController = Provider.of<FaceGroupingController>(context);
 
     return DefaultTabController(
       length: 3,
@@ -40,16 +45,18 @@ class HomePageContent extends StatelessWidget {
         ),
         body: TabBarView(
           children: [
-            ImagesTab(controller: controller),
-            FacesTab(controller: controller),
-            SimilarFacesTab(controller: controller),
+            ImagesTab(controller: faceDetectionController),
+            FacesTab(controller: faceDetectionController),
+            SimilarFacesTab(controller: faceGroupingController),
           ],
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: () async {
             String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
             if (selectedDirectory != null) {
-              controller.processDirectory(selectedDirectory);
+              faceDetectionController.processDirectory(selectedDirectory);
+              faceGroupingController.setImages(faceDetectionController.images);
+              faceGroupingController.groupFaces();
             }
           },
           child: const Icon(Icons.folder_open),
