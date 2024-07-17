@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
-
 import 'home_page.dart';
-import 'image_service.dart';
 
 void main() {
   runApp(const MyApp());
-  ImageService(); // Initialize the singleton
 }
 
 class MyApp extends StatelessWidget {

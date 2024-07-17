@@ -32,7 +32,9 @@ dependencies:
     sdk: flutter
   file_picker: ^8.0.3
   path_provider: ^2.0.11
+  provider: ^6.1.2
   opencv_dart: ^1.1.0
+  
   # opencv_dart: 
   #   git:
   #     url: https://github.com/rainyl/opencv_dart.git

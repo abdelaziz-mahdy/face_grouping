@@ -1,23 +1,10 @@
 import 'package:flutter/material.dart';
-import 'image_service.dart';
+import 'face_recognition_controller.dart';
 
 class ImagesTab extends StatelessWidget {
-  final bool isProcessing;
-  final double progress;
-  final Duration timeRemaining;
-  final int processedImages;
-  final int totalImages;
-  final List<ImageData> images;
+  final FaceRecognitionController controller;
 
-  const ImagesTab({
-    super.key,
-    required this.isProcessing,
-    required this.progress,
-    required this.timeRemaining,
-    required this.processedImages,
-    required this.totalImages,
-    required this.images,
-  });
+  const ImagesTab({Key? key, required this.controller}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -25,25 +12,25 @@ class ImagesTab extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          isProcessing
+          controller.isProcessing
               ? Column(
                   children: [
                     const CircularProgressIndicator(),
                     const SizedBox(height: 20),
-                    Text('Processing: ${(progress * 100).toStringAsFixed(2)}%'),
+                    Text('Processing: ${(controller.progress * 100).toStringAsFixed(2)}%'),
                     const SizedBox(height: 10),
-                    Text('Estimated time remaining: ${timeRemaining.inSeconds} seconds'),
+                    Text('Estimated time remaining: ${controller.timeRemaining.inSeconds} seconds'),
                     const SizedBox(height: 10),
-                    Text('Images processed: $processedImages out of $totalImages'),
+                    Text('Images processed: ${controller.processedImages} out of ${controller.totalImages}'),
                   ],
                 )
               : Expanded(
                   child: ListView.builder(
-                    itemCount: images.length,
+                    itemCount: controller.images.length,
                     itemBuilder: (context, index) {
                       return ListTile(
-                        title: Text(images[index].path),
-                        subtitle: Text('Faces detected: ${images[index].faceCount}'),
+                        title: Text(controller.images[index].path),
+                        subtitle: Text('Faces detected: ${controller.images[index].faceCount}'),
                       );
                     },
                   ),
