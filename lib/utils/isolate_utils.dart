@@ -18,7 +18,8 @@ class IsolateUtils {
 
     for (var i = 0; i < numberOfIsolates; i++) {
       final start = i * batchSize;
-      final end = (i + 1) * batchSize > totalItems ? totalItems : (i + 1) * batchSize;
+      final end =
+          (i + 1) * batchSize > totalItems ? totalItems : (i + 1) * batchSize;
       final batch = data.sublist(start, end);
 
       if (batch.isEmpty) continue;
@@ -34,7 +35,8 @@ class IsolateUtils {
         final elapsed = DateTime.now().difference(startTime);
         final estimatedTotalTime = elapsed * (1 / message.progress);
         final remainingTime = estimatedTotalTime - elapsed;
-        progressCallback(message.progress, message.processed, totalItems, remainingTime);
+        progressCallback(
+            message.progress, message.processed, totalItems, remainingTime);
       } else if (message is List<R>) {
         results.addAll(message);
         processedItems += message.length;

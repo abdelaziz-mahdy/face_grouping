@@ -17,10 +17,12 @@ class SimilarFacesTab extends StatelessWidget {
               children: [
                 const CircularProgressIndicator(),
                 const SizedBox(height: 20),
-                Text('Processing: ${(controller.progress * 100).toStringAsFixed(2)}%'),
-                if (controller.timeRemaining != null)
-                  Text('Estimated time remaining: ${controller.timeRemaining.inSeconds} seconds'),
-                Text('Faces processed: ${controller.processedImages} out of ${controller.totalImages}'),
+                Text(
+                    'Processing: ${(controller.progress * 100).toStringAsFixed(2)}%'),
+                Text(
+                    'Estimated time remaining: ${controller.timeRemaining.inSeconds} seconds'),
+                Text(
+                    'Faces processed: ${controller.processedImages} out of ${controller.totalImages}'),
               ],
             )
           : controller.faceGroups.isEmpty
@@ -46,7 +48,8 @@ class SimilarFacesTab extends StatelessWidget {
                                 ),
                               );
                             },
-                            child: Text('Group ${index + 1}: ${group.length} faces'),
+                            child: Text(
+                                'Group ${index + 1}: ${group.length} faces'),
                           ),
                           SizedBox(
                             height: 100,
@@ -56,7 +59,8 @@ class SimilarFacesTab extends StatelessWidget {
                               itemBuilder: (context, faceIndex) {
                                 return Padding(
                                   padding: const EdgeInsets.all(4.0),
-                                  child: _buildFaceImage(group[faceIndex]['faceImage']),
+                                  child: _buildFaceImage(
+                                      group[faceIndex].faceImage),
                                 );
                               },
                             ),
@@ -73,7 +77,8 @@ class SimilarFacesTab extends StatelessWidget {
     return FutureBuilder<Uint8List>(
       future: _decodeFaceImage(faceImageData),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done && snapshot.hasData) {
+        if (snapshot.connectionState == ConnectionState.done &&
+            snapshot.hasData) {
           return Image.memory(snapshot.data!);
         } else {
           return const CircularProgressIndicator();

@@ -4,7 +4,7 @@ import '../../controllers/face_detection_controller.dart';
 class ImagesTab extends StatelessWidget {
   final FaceDetectionController controller;
 
-  const ImagesTab({Key? key, required this.controller}) : super(key: key);
+  const ImagesTab({super.key, required this.controller});
 
   @override
   Widget build(BuildContext context) {
@@ -17,11 +17,14 @@ class ImagesTab extends StatelessWidget {
                   children: [
                     const CircularProgressIndicator(),
                     const SizedBox(height: 20),
-                    Text('Processing: ${(controller.progress * 100).toStringAsFixed(2)}%'),
+                    Text(
+                        'Processing: ${(controller.progress * 100).toStringAsFixed(2)}%'),
                     const SizedBox(height: 10),
-                    Text('Estimated time remaining: ${controller.timeRemaining.inSeconds} seconds'),
+                    Text(
+                        'Estimated time remaining: ${controller.timeRemaining.inSeconds} seconds'),
                     const SizedBox(height: 10),
-                    Text('Images processed: ${controller.processedImages} out of ${controller.totalImages}'),
+                    Text(
+                        'Images processed: ${controller.processedImages} out of ${controller.totalImages}'),
                   ],
                 )
               : Expanded(
@@ -30,7 +33,8 @@ class ImagesTab extends StatelessWidget {
                     itemBuilder: (context, index) {
                       return ListTile(
                         title: Text(controller.images[index].path),
-                        subtitle: Text('Faces detected: ${controller.images[index].faceCount}'),
+                        subtitle: Text(
+                            'Faces detected: ${controller.images[index].faceCount}'),
                       );
                     },
                   ),

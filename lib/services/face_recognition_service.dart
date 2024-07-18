@@ -1,18 +1,18 @@
 import 'dart:async';
-import 'dart:ffi';
 import 'dart:isolate';
-import 'dart:typed_data';
 import 'dart:io';
 
+import 'package:face_grouping/models/image_data.dart';
 import 'package:flutter/services.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:path_provider/path_provider.dart';
-import 'image_service.dart';
+import '../models/face_group.dart';
 
 class FaceRecognitionService {
   FaceRecognitionService._privateConstructor();
 
-  static final FaceRecognitionService instance = FaceRecognitionService._privateConstructor();
+  static final FaceRecognitionService instance =
+      FaceRecognitionService._privateConstructor();
 
   factory FaceRecognitionService() {
     return instance;
@@ -30,25 +30,27 @@ class FaceRecognitionService {
   Future<void> groupSimilarFaces(
     List<ImageData> images,
     void Function(double, String, int, int, Duration) progressCallback,
-    void Function(List<List<Map<String, dynamic>>>) completionCallback,
+    void Function(List<List<FaceGroup>>) completionCallback,
   ) async {
     final completer = Completer<void>();
     final receivePort = ReceivePort();
     final startTime = DateTime.now();
-    final int numberOfIsolates = 6;
+    const int numberOfIsolates = 6;
 
-    final tmpModelPath = await _copyAssetFileToTmp("assets/face_recognition_sface_2021dec.onnx");
+    final tmpModelPath =
+        await _copyAssetFileToTmp("assets/face_recognition_sface_2021dec.onnx");
 
     final totalImages = images.length;
     final batchSize = (totalImages / numberOfIsolates).ceil();
-    final faceGroups = <List<Map<String, dynamic>>>[];
+    final faceGroups = <List<FaceGroup>>[];
     final progressMap = List.filled(numberOfIsolates, 0.0);
     final processedImagesMap = List.filled(numberOfIsolates, 0);
     int overallProcessedImages = 0;
 
     for (var i = 0; i < numberOfIsolates; i++) {
       final start = i * batchSize;
-      final end = (i + 1) * batchSize > totalImages ? totalImages : (i + 1) * batchSize;
+      final end =
+          (i + 1) * batchSize > totalImages ? totalImages : (i + 1) * batchSize;
       final batch = images.sublist(start, end);
 
       if (batch.isEmpty) continue;
@@ -70,7 +72,8 @@ class FaceRecognitionService {
         progressMap[message.isolateIndex] = message.progress;
         processedImagesMap[message.isolateIndex] = message.processed;
 
-        final overallProgress = progressMap.reduce((a, b) => a + b) / numberOfIsolates;
+        final overallProgress =
+            progressMap.reduce((a, b) => a + b) / numberOfIsolates;
         overallProcessedImages = processedImagesMap.reduce((a, b) => a + b);
 
         final elapsed = DateTime.now().difference(startTime);
@@ -85,7 +88,10 @@ class FaceRecognitionService {
           remainingTime,
         );
       } else if (message is List<List<Map<String, dynamic>>>) {
-        faceGroups.addAll(message);
+        final groups = message
+            .map((group) => group.map((map) => FaceGroup.fromMap(map)).toList())
+            .toList();
+        faceGroups.addAll(groups);
         if (faceGroups.length == totalImages) {
           completionCallback(faceGroups);
           completer.complete();
@@ -97,7 +103,8 @@ class FaceRecognitionService {
     return completer.future;
   }
 
-  static Future<void> _groupSimilarFacesIsolate(_ProcessFacesParams params) async {
+  static Future<void> _groupSimilarFacesIsolate(
+      _ProcessFacesParams params) async {
     final recognizer = cv.FaceRecognizerSF.fromFile(
       params.modelPath,
       "",
@@ -107,7 +114,8 @@ class FaceRecognitionService {
 
     final faceFeatures = <Uint8List, cv.Mat>{};
     final faceInfoMap = <Uint8List, Map<String, dynamic>>{};
-    final totalFaces = params.imagePaths.fold<int>(0, (sum, image) => sum + image.sendableFaceRects.length);
+    final totalFaces = params.imagePaths
+        .fold<int>(0, (sum, image) => sum + image.sendableFaceRects.length);
 
     int processedFaces = 0;
 
@@ -117,7 +125,8 @@ class FaceRecognitionService {
         final rect = image.sendableFaceRects[i];
         final mat = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
 
-        final faceBox = cv.Mat.fromList(1, rect.rawDetection.length, cv.MatType.CV_32FC1, rect.rawDetection);
+        final faceBox = cv.Mat.fromList(1, rect.rawDetection.length,
+            cv.MatType.CV_32FC1, rect.rawDetection);
         final alignedFace = recognizer.alignCrop(mat, faceBox);
         final feature = recognizer.feature(alignedFace);
         final encodedFace = cv.imencode('.jpg', alignedFace);
@@ -140,7 +149,7 @@ class FaceRecognitionService {
       }
     }
 
-    final faceGroups = <List<Map<String, dynamic>>>[];
+    final faceGroups = <List<FaceGroup>>[];
     processedFaces = 0;
 
     for (var entry in faceFeatures.entries) {
@@ -154,7 +163,7 @@ class FaceRecognitionService {
         double totalMatchScoreNormL2 = 0;
 
         for (var existingFace in group) {
-          final existingFeature = faceFeatures[existingFace['faceImage']]!;
+          final existingFeature = faceFeatures[existingFace.faceImage]!;
           totalMatchScoreCosine += recognizer.match(
             faceFeature,
             existingFeature,
@@ -170,12 +179,13 @@ class FaceRecognitionService {
         final averageMatchScoreCosine = totalMatchScoreCosine / group.length;
         final averageMatchScoreNormL2 = totalMatchScoreNormL2 / group.length;
 
-        if (averageMatchScoreCosine >= 0.38 && averageMatchScoreNormL2 <= 1.12) {
-          group.add({
-            'faceImage': faceImage,
-            'originalImagePath': faceInfoMap[faceImage]!['originalImagePath'],
-            'rect': faceInfoMap[faceImage]!['rect'],
-          });
+        if (averageMatchScoreCosine >= 0.38 &&
+            averageMatchScoreNormL2 <= 1.12) {
+          group.add(FaceGroup(
+            faceImage: faceImage,
+            originalImagePath: faceInfoMap[faceImage]!['originalImagePath'],
+            rect: faceInfoMap[faceImage]!['rect'],
+          ));
           added = true;
           break;
         }
@@ -183,11 +193,11 @@ class FaceRecognitionService {
 
       if (!added) {
         faceGroups.add([
-          {
-            'faceImage': faceImage,
-            'originalImagePath': faceInfoMap[faceImage]!['originalImagePath'],
-            'rect': faceInfoMap[faceImage]!['rect'],
-          }
+          FaceGroup(
+            faceImage: faceImage,
+            originalImagePath: faceInfoMap[faceImage]!['originalImagePath'],
+            rect: faceInfoMap[faceImage]!['rect'],
+          ),
         ]);
       }
 
@@ -201,7 +211,9 @@ class FaceRecognitionService {
     }
 
     recognizer.dispose();
-    params.sendPort.send(faceGroups);
+    params.sendPort.send(faceGroups
+        .map((group) => group.map((face) => face.toMap()).toList())
+        .toList());
   }
 }
 

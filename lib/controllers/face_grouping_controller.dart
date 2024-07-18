@@ -1,6 +1,7 @@
+import 'package:face_grouping/models/image_data.dart';
 import 'package:flutter/material.dart';
 import '../services/face_recognition_service.dart';
-import '../services/image_service.dart';
+import '../models/face_group.dart';
 
 class FaceGroupingController extends ChangeNotifier {
   bool _isProcessing = false;
@@ -8,7 +9,7 @@ class FaceGroupingController extends ChangeNotifier {
   Duration _timeRemaining = Duration.zero;
   int _processedImages = 0;
   int _totalImages = 0;
-  List<List<Map<String, dynamic>>> _faceGroups = [];
+  List<List<FaceGroup>> _faceGroups = [];
   List<ImageData> _images = [];
 
   bool get isProcessing => _isProcessing;
@@ -16,7 +17,7 @@ class FaceGroupingController extends ChangeNotifier {
   Duration get timeRemaining => _timeRemaining;
   int get processedImages => _processedImages;
   int get totalImages => _totalImages;
-  List<List<Map<String, dynamic>>> get faceGroups => _faceGroups;
+  List<List<FaceGroup>> get faceGroups => _faceGroups;
   List<ImageData> get images => _images;
 
   void setImages(List<ImageData> images) {
@@ -43,7 +44,8 @@ class FaceGroupingController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _updateProgress(double progress, Duration timeRemaining, int processedImages, int totalImages) {
+  void _updateProgress(double progress, Duration timeRemaining,
+      int processedImages, int totalImages) {
     _progress = progress;
     _timeRemaining = timeRemaining;
     _processedImages = processedImages;
@@ -51,7 +53,7 @@ class FaceGroupingController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _updateFaceGroups(List<List<Map<String, dynamic>>> faceGroups) {
+  void _updateFaceGroups(List<List<FaceGroup>> faceGroups) {
     _faceGroups = faceGroups;
     notifyListeners();
   }

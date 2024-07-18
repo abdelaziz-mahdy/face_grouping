@@ -1,3 +1,4 @@
+import 'package:face_grouping/models/image_data.dart';
 import 'package:flutter/material.dart';
 import '../services/image_service.dart';
 

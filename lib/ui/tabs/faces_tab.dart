@@ -1,21 +1,23 @@
 import 'dart:typed_data';
+import 'package:face_grouping/models/sendable_rect.dart';
 import 'package:flutter/material.dart';
 import '../../controllers/face_detection_controller.dart';
-import '../../services/image_service.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 
 class FacesTab extends StatelessWidget {
   final FaceDetectionController controller;
 
-  const FacesTab({Key? key, required this.controller}) : super(key: key);
+  const FacesTab({super.key, required this.controller});
 
   @override
   Widget build(BuildContext context) {
     final faceRectsAndPaths = controller.images.expand((image) {
-      return image.sendableFaceRects.map((rect) => {
-        'path': image.path,
-        'rect': rect,
-      }).toList();
+      return image.sendableFaceRects
+          .map((rect) => {
+                'path': image.path,
+                'rect': rect,
+              })
+          .toList();
     }).toList();
 
     return Center(
@@ -24,13 +26,15 @@ class FacesTab extends StatelessWidget {
           : faceRectsAndPaths.isEmpty
               ? const Text('No faces detected')
               : GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 50),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 50),
                   itemCount: faceRectsAndPaths.length,
                   itemBuilder: (context, index) {
                     final faceInfo = faceRectsAndPaths[index];
                     return Padding(
                       padding: const EdgeInsets.all(4.0),
-                      child: _buildFaceImage(faceInfo['path'] as String, faceInfo['rect'] as SendableRect),
+                      child: _buildFaceImage(faceInfo['path'] as String,
+                          faceInfo['rect'] as SendableRect),
                     );
                   },
                 ),
@@ -53,7 +57,8 @@ class FacesTab extends StatelessWidget {
     );
   }
 
-  Future<Uint8List> _encodeFaceImage(String imagePath, SendableRect rect) async {
+  Future<Uint8List> _encodeFaceImage(
+      String imagePath, SendableRect rect) async {
     try {
       final img = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
       final face = img.region(rect.toRect());
@@ -70,7 +75,7 @@ class FacesTab extends StatelessWidget {
       child: Center(
         child: Text(
           'Error: $error',
-          style: TextStyle(color: Colors.red),
+          style: const TextStyle(color: Colors.red),
           textAlign: TextAlign.center,
         ),
       ),

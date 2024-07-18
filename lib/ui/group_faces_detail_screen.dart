@@ -1,30 +1,27 @@
-import 'dart:typed_data';
+import 'package:face_grouping/models/image_data.dart';
 import 'package:flutter/material.dart';
-import '../services/image_service.dart';
+import '../models/face_group.dart';
 
 class GroupFacesDetailScreen extends StatelessWidget {
-  final List<Map<String, dynamic>> faceGroup;
+  final List<FaceGroup> faceGroup;
   final List<ImageData> images;
 
-  const GroupFacesDetailScreen({
-    super.key,
-    required this.faceGroup,
-    required this.images,
-  });
+  const GroupFacesDetailScreen(
+      {super.key, required this.faceGroup, required this.images});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Group Faces Detail'),
+        title: const Text('Group Faces Detail'),
       ),
       body: ListView.builder(
         itemCount: faceGroup.length,
         itemBuilder: (context, index) {
           final faceInfo = faceGroup[index];
-          final faceImage = faceInfo['faceImage'];
-          final originalImagePath = faceInfo['originalImagePath'];
-          final rect = faceInfo['rect'];
+          final faceImage = faceInfo.faceImage;
+          final originalImagePath = faceInfo.originalImagePath;
+          final rect = faceInfo.rect;
 
           return Column(
             children: [

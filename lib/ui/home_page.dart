@@ -27,7 +27,8 @@ class HomePageContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final faceDetectionController = Provider.of<FaceDetectionController>(context);
+    final faceDetectionController =
+        Provider.of<FaceDetectionController>(context);
     final faceGroupingController = Provider.of<FaceGroupingController>(context);
 
     return DefaultTabController(
@@ -52,7 +53,8 @@ class HomePageContent extends StatelessWidget {
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: () async {
-            String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+            String? selectedDirectory =
+                await FilePicker.platform.getDirectoryPath();
             if (selectedDirectory != null) {
               await faceDetectionController.processDirectory(selectedDirectory);
               faceGroupingController.setImages(faceDetectionController.images);
