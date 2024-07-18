@@ -46,6 +46,7 @@ class FaceRecognitionService {
     final progressMap = List.filled(numberOfIsolates, 0.0);
     final processedImagesMap = List.filled(numberOfIsolates, 0);
     int overallProcessedImages = 0;
+    int totalProcessedFaces = 0;
 
     for (var i = 0; i < numberOfIsolates; i++) {
       final start = i * batchSize;
@@ -92,7 +93,11 @@ class FaceRecognitionService {
             .map((group) => group.map((map) => FaceGroup.fromMap(map)).toList())
             .toList();
         faceGroups.addAll(groups);
-        if (faceGroups.length == totalImages) {
+        totalProcessedFaces +=
+            groups.fold(0, (sum, group) => sum + group.length);
+
+        if (totalProcessedFaces ==
+            images.fold<int>(0, (sum, image) => sum + image.faceCount)) {
           completionCallback(faceGroups);
           completer.complete();
           receivePort.close();
