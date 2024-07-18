@@ -24,7 +24,7 @@ class FaceGroupingController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void groupFaces() async {
+  Future<void> groupFaces() async {
     _setProcessing(true);
     await FaceRecognitionService.instance.groupSimilarFaces(
       _images,

@@ -16,7 +16,7 @@ class FaceDetectionController extends ChangeNotifier {
   int get totalImages => _totalImages;
   List<ImageData> get images => _images;
 
-  void processDirectory(String directoryPath) async {
+  Future<void> processDirectory(String directoryPath) async {
     _setProcessing(true);
     _images = await ImageService.instance.processDirectory(
       directoryPath,
@@ -32,7 +32,8 @@ class FaceDetectionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _updateProgress(double progress, Duration timeRemaining, int processedImages, int totalImages) {
+  void _updateProgress(double progress, Duration timeRemaining,
+      int processedImages, int totalImages) {
     _progress = progress;
     _timeRemaining = timeRemaining;
     _processedImages = processedImages;

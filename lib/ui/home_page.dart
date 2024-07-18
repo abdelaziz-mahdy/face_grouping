@@ -54,9 +54,9 @@ class HomePageContent extends StatelessWidget {
           onPressed: () async {
             String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
             if (selectedDirectory != null) {
-              faceDetectionController.processDirectory(selectedDirectory);
+              await faceDetectionController.processDirectory(selectedDirectory);
               faceGroupingController.setImages(faceDetectionController.images);
-              faceGroupingController.groupFaces();
+              await faceGroupingController.groupFaces();
             }
           },
           child: const Icon(Icons.folder_open),
