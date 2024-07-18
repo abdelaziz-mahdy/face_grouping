@@ -32,8 +32,8 @@ This Face Detection and Grouping App is a powerful tool designed to process imag
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/yourusername/face-detection-grouping-app.git
-   cd face-detection-grouping-app
+   git clone https://github.com/abdelaziz-mahdy/face_grouping.git
+   cd face_grouping
    ```
 
 2. **Install Dependencies**:
