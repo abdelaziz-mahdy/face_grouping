@@ -12,6 +12,14 @@ This Face Detection and Grouping App is a powerful tool designed to process imag
 - **Face Grouping**: Groups similar faces across different images.
 - **Detailed View**: View details of each grouped face, including the original image and bounding box of the detected face.
 
+## Screenshots
+
+### Faces Tab
+![Faces Tab](screenshots/faces_tab.png)
+
+### Groups Tab
+![Groups Tab](screenshots/groups_tab.png)
+
 ## Installation
 
 ### Prerequisites
@@ -86,7 +94,6 @@ This Face Detection and Grouping App is a powerful tool designed to process imag
 - **Face Grouping**:
   - `FaceGroupingController.groupFaces()`: Groups similar faces from the detected faces.
   
-
 ## Future Improvements
 
 - **Enhance Accuracy**: Improve face detection and recognition accuracy by using more advanced models.
