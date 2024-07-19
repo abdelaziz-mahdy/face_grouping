@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'package:face_grouping/utils/human_readable_duration.dart';
 import 'package:flutter/material.dart';
 import '../../controllers/face_grouping_controller.dart';
 import '../group_faces_detail_screen.dart';
@@ -20,7 +21,7 @@ class SimilarFacesTab extends StatelessWidget {
                 Text(
                     '${controller.stage}: ${(controller.progress * 100).toStringAsFixed(2)}%'),
                 Text(
-                    'Estimated time remaining: ${controller.timeRemaining.inSeconds} seconds'),
+                    'Estimated time remaining: ${controller.timeRemaining.toHumanReadableString()}'),
                 Text(
                     'Faces processed: ${controller.processedImages} out of ${controller.totalImages}'),
               ],
@@ -31,43 +32,41 @@ class SimilarFacesTab extends StatelessWidget {
                   itemCount: controller.faceGroups.length,
                   itemBuilder: (context, index) {
                     final group = controller.faceGroups[index];
-                    return Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => GroupFacesDetailScreen(
-                                    faceGroup: group,
-                                    images: controller.images,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: Text(
-                                'Group ${index + 1}: ${group.length} faces'),
-                          ),
-                          SizedBox(
-                            height: 100,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: group.length,
-                              itemBuilder: (context, faceIndex) {
-                                return Padding(
-                                  padding: const EdgeInsets.all(4.0),
-                                  child: _buildFaceImage(
-                                      group[faceIndex].faceImage),
-                                );
-                              },
+                    return GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => GroupFacesDetailScreen(
+                                faceGroup: group,
+                                images: controller.images,
+                              ),
                             ),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Group ${index + 1}: ${group.length} faces'),
+                              SizedBox(
+                                height: 100,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: group.length,
+                                  itemBuilder: (context, faceIndex) {
+                                    return Padding(
+                                      padding: const EdgeInsets.all(4.0),
+                                      child: _buildFaceImage(
+                                          group[faceIndex].faceImage),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    );
+                        ));
                   },
                 ),
     );

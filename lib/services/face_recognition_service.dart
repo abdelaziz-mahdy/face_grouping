@@ -229,7 +229,8 @@ class FaceRecognitionService {
           _isFeatureSimilar(recognizer, faceFeature, closestGroup, params)) {
         closestGroup.add(FaceGroup(
           faceImage: faceImage,
-          originalImagePath: params.faceInfoMap[faceImage]!['originalImagePath'],
+          originalImagePath:
+              params.faceInfoMap[faceImage]!['originalImagePath'],
           rect: params.faceInfoMap[faceImage]!['rect'],
         ));
       } else {
@@ -251,11 +252,17 @@ class FaceRecognitionService {
     }
 
     recognizer.dispose();
+    // Sort faceGroups to have the group with the highest count first
+    faceGroups.sort((a, b) => b.length.compareTo(a.length));
+
     params.sendPort.send(GroupingCompleteMessage(faceGroups));
   }
 
-  static bool _isFeatureSimilar(cv.FaceRecognizerSF recognizer,
-      List<double> faceFeature, List<FaceGroup> group, _GroupFacesParams params) {
+  static bool _isFeatureSimilar(
+      cv.FaceRecognizerSF recognizer,
+      List<double> faceFeature,
+      List<FaceGroup> group,
+      _GroupFacesParams params) {
     double totalMatchScoreCosine = 0;
     double totalMatchScoreNormL2 = 0;
 
@@ -266,12 +273,14 @@ class FaceRecognitionService {
           cv.MatType.CV_32FC1,
           params.faceFeatures[existingFace.faceImage]!);
       totalMatchScoreCosine += recognizer.match(
-        cv.Mat.fromList(1, faceFeature.length, cv.MatType.CV_32FC1, faceFeature),
+        cv.Mat.fromList(
+            1, faceFeature.length, cv.MatType.CV_32FC1, faceFeature),
         existingFeature,
         disType: cv.FaceRecognizerSF.FR_COSINE,
       );
       totalMatchScoreNormL2 += recognizer.match(
-        cv.Mat.fromList(1, faceFeature.length, cv.MatType.CV_32FC1, faceFeature),
+        cv.Mat.fromList(
+            1, faceFeature.length, cv.MatType.CV_32FC1, faceFeature),
         existingFeature,
         disType: cv.FaceRecognizerSF.FR_NORM_L2,
       );
@@ -280,8 +289,7 @@ class FaceRecognitionService {
     final averageMatchScoreCosine = totalMatchScoreCosine / group.length;
     final averageMatchScoreNormL2 = totalMatchScoreNormL2 / group.length;
 
-    return averageMatchScoreCosine >= 0.38 &&
-        averageMatchScoreNormL2 <= 1.12;
+    return averageMatchScoreCosine >= 0.38 && averageMatchScoreNormL2 <= 1.12;
   }
 
   static int _compareFeatures(List<double> a, List<double> b) {
