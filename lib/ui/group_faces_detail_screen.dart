@@ -6,8 +6,11 @@ class GroupFacesDetailScreen extends StatelessWidget {
   final List<FaceGroup> faceGroup;
   final List<ImageData> images;
 
-  const GroupFacesDetailScreen(
-      {super.key, required this.faceGroup, required this.images});
+  const GroupFacesDetailScreen({
+    super.key,
+    required this.faceGroup,
+    required this.images,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,12 +26,24 @@ class GroupFacesDetailScreen extends StatelessWidget {
           final originalImagePath = faceInfo.originalImagePath;
           final rect = faceInfo.rect;
 
-          return Column(
-            children: [
-              Image.memory(faceImage),
-              Text('Original Image: $originalImagePath'),
-              // You can add more details about the original image here
-            ],
+          return Card(
+            margin: EdgeInsets.all(10),
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Image.memory(faceImage),
+                  SizedBox(height: 10),
+                  Text(
+                    'Original Image: $originalImagePath',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  SizedBox(height: 5),
+                  Text('Rect: ${rect.toMap()}'),
+                ],
+              ),
+            ),
           );
         },
       ),

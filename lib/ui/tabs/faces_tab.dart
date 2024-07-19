@@ -33,40 +33,83 @@ class FacesTab extends StatelessWidget {
                     final faceInfo = faceRectsAndPaths[index];
                     return Padding(
                       padding: const EdgeInsets.all(4.0),
-                      child: _buildFaceImage(faceInfo['path'] as String,
-                          faceInfo['rect'] as SendableRect),
+                      child: FaceImageWidget(
+                        imagePath: faceInfo['path'] as String,
+                        rect: faceInfo['rect'] as SendableRect,
+                      ),
                     );
                   },
                 ),
     );
   }
+}
 
-  Widget _buildFaceImage(String imagePath, SendableRect rect) {
-    return FutureBuilder<Uint8List>(
-      future: _encodeFaceImage(imagePath, rect),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done) {
-          if (snapshot.hasData) {
-            return Image.memory(snapshot.data!);
-          } else if (snapshot.hasError) {
-            return _buildErrorWidget(snapshot.error.toString());
-          }
-        }
-        return const CircularProgressIndicator();
-      },
-    );
+class FaceImageWidget extends StatefulWidget {
+  final String imagePath;
+  final SendableRect rect;
+
+  const FaceImageWidget({
+    super.key,
+    required this.imagePath,
+    required this.rect,
+  });
+
+  @override
+  _FaceImageWidgetState createState() => _FaceImageWidgetState();
+}
+
+class _FaceImageWidgetState extends State<FaceImageWidget> {
+  late final ValueNotifier<Uint8List?> _imageNotifier;
+  late final ValueNotifier<String?> _errorNotifier;
+
+  @override
+  void initState() {
+    super.initState();
+    _imageNotifier = ValueNotifier<Uint8List?>(null);
+    _errorNotifier = ValueNotifier<String?>(null);
+    _loadFaceImage();
+  }
+
+  Future<void> _loadFaceImage() async {
+    try {
+      final encodedFace = await _encodeFaceImage(widget.imagePath, widget.rect);
+      _imageNotifier.value = encodedFace;
+    } catch (e) {
+      _errorNotifier.value = e.toString();
+    }
   }
 
   Future<Uint8List> _encodeFaceImage(
       String imagePath, SendableRect rect) async {
     try {
-      final img = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
-      final face = img.region(rect.toRect());
-      final encodedFace = cv.imencode('.jpg', face);
+      final img = await cv.imreadAsync(imagePath, flags: cv.IMREAD_COLOR);
+      final face = await img.regionAsync(rect.toRect());
+      final (_, encodedFace) = await cv.imencodeAsync('.jpg', face);
       return encodedFace;
     } catch (e) {
       throw Exception('Failed to load face image: $e');
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<Uint8List?>(
+      valueListenable: _imageNotifier,
+      builder: (context, imageData, child) {
+        if (imageData != null) {
+          return Image.memory(imageData);
+        }
+        return ValueListenableBuilder<String?>(
+          valueListenable: _errorNotifier,
+          builder: (context, error, child) {
+            if (error != null) {
+              return _buildErrorWidget(error);
+            }
+            return const CircularProgressIndicator();
+          },
+        );
+      },
+    );
   }
 
   Widget _buildErrorWidget(String error) {
@@ -80,5 +123,12 @@ class FacesTab extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _imageNotifier.dispose();
+    _errorNotifier.dispose();
+    super.dispose();
   }
 }
