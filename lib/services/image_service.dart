@@ -29,7 +29,7 @@ class ImageService {
   Future<List<ImageData>> processDirectory(
     String directoryPath,
     void Function(double, Duration, int, int) progressCallback, {
-    int numberOfIsolates = 6,
+    int numberOfIsolates =7,
   }) async {
     final completer = Completer<List<ImageData>>();
     final receivePort = ReceivePort();

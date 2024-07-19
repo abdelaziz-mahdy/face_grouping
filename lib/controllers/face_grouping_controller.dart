@@ -6,6 +6,7 @@ import '../models/face_group.dart';
 class FaceGroupingController extends ChangeNotifier {
   bool _isProcessing = false;
   double _progress = 0.0;
+  String _stage = "";
   Duration _timeRemaining = Duration.zero;
   int _processedImages = 0;
   int _totalImages = 0;
@@ -13,6 +14,7 @@ class FaceGroupingController extends ChangeNotifier {
   List<ImageData> _images = [];
 
   bool get isProcessing => _isProcessing;
+  String get stage => _stage;
   double get progress => _progress;
   Duration get timeRemaining => _timeRemaining;
   int get processedImages => _processedImages;
@@ -30,7 +32,8 @@ class FaceGroupingController extends ChangeNotifier {
     await FaceRecognitionService.instance.groupSimilarFaces(
       _images,
       (progress, stage, processedFaces, totalFaces, timeRemaining) {
-        _updateProgress(progress, timeRemaining, processedFaces, totalFaces);
+        _updateProgress(
+            progress, stage, timeRemaining, processedFaces, totalFaces);
       },
       (faceGroups) {
         _updateFaceGroups(faceGroups);
@@ -44,9 +47,10 @@ class FaceGroupingController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _updateProgress(double progress, Duration timeRemaining,
+  void _updateProgress(double progress, String stage, Duration timeRemaining,
       int processedImages, int totalImages) {
     _progress = progress;
+    _stage = stage;
     _timeRemaining = timeRemaining;
     _processedImages = processedImages;
     _totalImages = totalImages;
