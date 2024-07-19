@@ -73,9 +73,13 @@ class _FaceImageWidgetState extends State<FaceImageWidget> {
   Future<void> _loadFaceImage() async {
     try {
       final encodedFace = await _encodeFaceImage(widget.imagePath, widget.rect);
-      _imageNotifier.value = encodedFace;
+      if (mounted) {
+        _imageNotifier.value = encodedFace;
+      }
     } catch (e) {
-      _errorNotifier.value = e.toString();
+      if (mounted) {
+        _errorNotifier.value = e.toString();
+      }
     }
   }
 
