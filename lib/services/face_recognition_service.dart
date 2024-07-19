@@ -3,6 +3,7 @@ import 'dart:isolate';
 import 'dart:io';
 
 import 'package:face_grouping/models/image_data.dart';
+import 'package:face_grouping/models/sendable_rect.dart';
 import 'package:flutter/services.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:path_provider/path_provider.dart';
@@ -40,30 +41,36 @@ class FaceRecognitionService {
     final tmpModelPath =
         await _copyAssetFileToTmp("assets/face_recognition_sface_2021dec.onnx");
 
-    final totalImages = images.length;
-    final batchSize = (totalImages / numberOfIsolates).ceil();
-    final faceGroups = <List<FaceGroup>>[];
+    final totalFaces = images.fold<int>(
+        0, (sum, image) => sum + image.sendableFaceRects.length);
+    final batchSize = (totalFaces / numberOfIsolates).ceil();
+    final faceFeatures = <Uint8List, List<double>>{};
+    final faceInfoMap = <Uint8List, Map<String, dynamic>>{};
     final progressMap = List.filled(numberOfIsolates, 0.0);
-    final processedImagesMap = List.filled(numberOfIsolates, 0);
-    int overallProcessedImages = 0;
-    int totalProcessedFaces = 0;
+    final processedFacesMap = List.filled(numberOfIsolates, 0);
+    int overallProcessedFaces = 0;
+    int completedIsolates = 0;
 
     for (var i = 0; i < numberOfIsolates; i++) {
       final start = i * batchSize;
       final end =
-          (i + 1) * batchSize > totalImages ? totalImages : (i + 1) * batchSize;
-      final batch = images.sublist(start, end);
+          (i + 1) * batchSize > totalFaces ? totalFaces : (i + 1) * batchSize;
+      final batch = images.expand((image) {
+        return image.sendableFaceRects.sublist(start, end).map((rect) => {
+              'imagePath': image.path,
+              'rect': rect,
+            });
+      }).toList();
 
       if (batch.isEmpty) continue;
 
       Isolate.spawn(
-        _groupSimilarFacesIsolate,
+        _extractFeaturesIsolate,
         _ProcessFacesParams(
           batch,
           receivePort.sendPort,
           tmpModelPath,
           i,
-          totalImages,
         ),
       );
     }
@@ -71,11 +78,11 @@ class FaceRecognitionService {
     receivePort.listen((message) {
       if (message is ProgressMessage) {
         progressMap[message.isolateIndex] = message.progress;
-        processedImagesMap[message.isolateIndex] = message.processed;
+        processedFacesMap[message.isolateIndex] = message.processed;
 
         final overallProgress =
             progressMap.reduce((a, b) => a + b) / numberOfIsolates;
-        overallProcessedImages = processedImagesMap.reduce((a, b) => a + b);
+        overallProcessedFaces = processedFacesMap.reduce((a, b) => a + b);
 
         final elapsed = DateTime.now().difference(startTime);
         final estimatedTotalTime = elapsed * (1 / overallProgress);
@@ -84,31 +91,54 @@ class FaceRecognitionService {
         progressCallback(
           overallProgress,
           "Processing",
-          overallProcessedImages,
-          totalImages,
+          overallProcessedFaces,
+          totalFaces,
           remainingTime,
         );
-      } else if (message is List<List<Map<String, dynamic>>>) {
-        final groups = message
-            .map((group) => group.map((map) => FaceGroup.fromMap(map)).toList())
-            .toList();
-        faceGroups.addAll(groups);
-        totalProcessedFaces +=
-            groups.fold(0, (sum, group) => sum + group.length);
+      } else if (message is ExtractionCompleteMessage) {
+        faceFeatures.addAll(message.faceFeatures);
+        faceInfoMap.addAll(message.faceInfoMap);
+        completedIsolates++;
 
-        if (totalProcessedFaces ==
-            images.fold<int>(0, (sum, image) => sum + image.faceCount)) {
-          completionCallback(faceGroups);
-          completer.complete();
-          receivePort.close();
+        if (completedIsolates == numberOfIsolates) {
+          // All feature extraction is complete, now perform the grouping in an isolate
+          Isolate.spawn(
+            _groupFacesIsolate,
+            _GroupFacesParams(
+              tmpModelPath,
+              faceFeatures,
+              faceInfoMap,
+              receivePort.sendPort,
+              totalFaces,
+            ),
+          );
         }
+      } else if (message is GroupingProgressMessage) {
+        final progress = message.progress;
+        final processed = message.processed;
+
+        final overallProgress = progress;
+        final elapsed = DateTime.now().difference(startTime);
+        final estimatedTotalTime = elapsed * (1 / overallProgress);
+        final remainingTime = estimatedTotalTime - elapsed;
+
+        progressCallback(
+          overallProgress,
+          "Grouping",
+          processed,
+          totalFaces,
+          remainingTime,
+        );
+      } else if (message is GroupingCompleteMessage) {
+        completionCallback(message.faceGroups);
+        completer.complete();
       }
     });
 
     return completer.future;
   }
 
-  static Future<void> _groupSimilarFacesIsolate(
+  static Future<void> _extractFeaturesIsolate(
       _ProcessFacesParams params) async {
     final recognizer = cv.FaceRecognizerSF.fromFile(
       params.modelPath,
@@ -117,49 +147,65 @@ class FaceRecognitionService {
       targetId: cv.DNN_TARGET_OPENCL,
     );
 
-    final faceFeatures = <Uint8List, cv.Mat>{};
+    final faceFeatures = <Uint8List, List<double>>{};
     final faceInfoMap = <Uint8List, Map<String, dynamic>>{};
-    final totalFaces = params.imagePaths
-        .fold<int>(0, (sum, image) => sum + image.sendableFaceRects.length);
+
+    final totalFaces = params.imagePaths.fold<int>(0, (sum, image) => sum + 1);
 
     int processedFaces = 0;
 
     for (var image in params.imagePaths) {
-      final imagePath = image.path;
-      for (var i = 0; i < image.sendableFaceRects.length; i++) {
-        final rect = image.sendableFaceRects[i];
-        final mat = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
+      final imagePath = image['imagePath'];
+      final rect = image['rect'] as SendableRect;
+      final mat = cv.imread(imagePath, flags: cv.IMREAD_COLOR);
 
-        final faceBox = cv.Mat.fromList(1, rect.rawDetection.length,
-            cv.MatType.CV_32FC1, rect.rawDetection);
-        final alignedFace = recognizer.alignCrop(mat, faceBox);
-        final feature = recognizer.feature(alignedFace);
-        final encodedFace = cv.imencode('.jpg', alignedFace);
+      final faceBox = cv.Mat.fromList(
+          1, rect.rawDetection.length, cv.MatType.CV_32FC1, rect.rawDetection);
+      final alignedFace = recognizer.alignCrop(mat, faceBox);
+      final feature = recognizer.feature(alignedFace);
+      final encodedFace = cv.imencode('.jpg', alignedFace);
+      faceFeatures[encodedFace] =
+          List.generate(feature.width, (index) => feature.at<double>(0, index));
 
-        faceFeatures[encodedFace] = feature.clone();
-        faceInfoMap[encodedFace] = {
-          'originalImagePath': rect.originalImagePath,
-          'rect': rect,
-        };
+      faceInfoMap[encodedFace] = {
+        'originalImagePath': rect.originalImagePath,
+        'rect': rect,
+      };
 
-        alignedFace.dispose();
-        faceBox.dispose();
-        processedFaces++;
-        params.sendPort.send(ProgressMessage(
-          processedFaces / totalFaces,
-          processedFaces,
-          totalFaces,
-          params.isolateIndex,
-        ));
-      }
+      alignedFace.dispose();
+      faceBox.dispose();
+      processedFaces++;
+      params.sendPort.send(ProgressMessage(
+        processedFaces / totalFaces,
+        processedFaces,
+        totalFaces,
+        params.isolateIndex,
+      ));
     }
 
-    final faceGroups = <List<FaceGroup>>[];
-    processedFaces = 0;
+    recognizer.dispose();
+    params.sendPort.send(ExtractionCompleteMessage(
+      params.isolateIndex,
+      faceFeatures,
+      faceInfoMap,
+    ));
+  }
 
-    for (var entry in faceFeatures.entries) {
+  static Future<void> _groupFacesIsolate(_GroupFacesParams params) async {
+    final recognizer = cv.FaceRecognizerSF.fromFile(
+      params.modelPath,
+      "",
+      backendId: cv.DNN_BACKEND_OPENCV,
+      targetId: cv.DNN_TARGET_OPENCL,
+    );
+
+    final faceGroups = <List<FaceGroup>>[];
+    int processedFaces = 0;
+
+    for (var entry in params.faceFeatures.entries) {
       final faceImage = entry.key;
-      final faceFeature = entry.value;
+      final faceFeature = cv.Mat.fromList(
+          1, entry.value.length, cv.MatType.CV_32FC1, entry.value);
 
       bool added = false;
 
@@ -168,7 +214,11 @@ class FaceRecognitionService {
         double totalMatchScoreNormL2 = 0;
 
         for (var existingFace in group) {
-          final existingFeature = faceFeatures[existingFace.faceImage]!;
+          final existingFeature = cv.Mat.fromList(
+              1,
+              params.faceFeatures[existingFace.faceImage]!.length,
+              cv.MatType.CV_32FC1,
+              params.faceFeatures[existingFace.faceImage]!);
           totalMatchScoreCosine += recognizer.match(
             faceFeature,
             existingFeature,
@@ -188,8 +238,9 @@ class FaceRecognitionService {
             averageMatchScoreNormL2 <= 1.12) {
           group.add(FaceGroup(
             faceImage: faceImage,
-            originalImagePath: faceInfoMap[faceImage]!['originalImagePath'],
-            rect: faceInfoMap[faceImage]!['rect'],
+            originalImagePath:
+                params.faceInfoMap[faceImage]!['originalImagePath'],
+            rect: params.faceInfoMap[faceImage]!['rect'],
           ));
           added = true;
           break;
@@ -200,41 +251,52 @@ class FaceRecognitionService {
         faceGroups.add([
           FaceGroup(
             faceImage: faceImage,
-            originalImagePath: faceInfoMap[faceImage]!['originalImagePath'],
-            rect: faceInfoMap[faceImage]!['rect'],
+            originalImagePath:
+                params.faceInfoMap[faceImage]!['originalImagePath'],
+            rect: params.faceInfoMap[faceImage]!['rect'],
           ),
         ]);
       }
 
       processedFaces++;
-      params.sendPort.send(ProgressMessage(
-        processedFaces / totalFaces,
+      params.sendPort.send(GroupingProgressMessage(
+        processedFaces / params.totalFaces,
         processedFaces,
-        totalFaces,
-        params.isolateIndex,
       ));
     }
 
     recognizer.dispose();
-    params.sendPort.send(faceGroups
-        .map((group) => group.map((face) => face.toMap()).toList())
-        .toList());
+    params.sendPort.send(GroupingCompleteMessage(faceGroups));
   }
 }
 
 class _ProcessFacesParams {
-  final List<ImageData> imagePaths;
+  final List<Map<String, dynamic>> imagePaths;
   final SendPort sendPort;
   final String modelPath;
   final int isolateIndex;
-  final int total;
 
   _ProcessFacesParams(
     this.imagePaths,
     this.sendPort,
     this.modelPath,
     this.isolateIndex,
-    this.total,
+  );
+}
+
+class _GroupFacesParams {
+  final String modelPath;
+  final Map<Uint8List, List<double>> faceFeatures;
+  final Map<Uint8List, Map<String, dynamic>> faceInfoMap;
+  final SendPort sendPort;
+  final int totalFaces;
+
+  _GroupFacesParams(
+    this.modelPath,
+    this.faceFeatures,
+    this.faceInfoMap,
+    this.sendPort,
+    this.totalFaces,
   );
 }
 
@@ -245,4 +307,29 @@ class ProgressMessage {
   final int isolateIndex;
 
   ProgressMessage(this.progress, this.processed, this.total, this.isolateIndex);
+}
+
+class ExtractionCompleteMessage {
+  final int isolateIndex;
+  final Map<Uint8List, List<double>> faceFeatures;
+  final Map<Uint8List, Map<String, dynamic>> faceInfoMap;
+
+  ExtractionCompleteMessage(
+    this.isolateIndex,
+    this.faceFeatures,
+    this.faceInfoMap,
+  );
+}
+
+class GroupingProgressMessage {
+  final double progress;
+  final int processed;
+
+  GroupingProgressMessage(this.progress, this.processed);
+}
+
+class GroupingCompleteMessage {
+  final List<List<FaceGroup>> faceGroups;
+
+  GroupingCompleteMessage(this.faceGroups);
 }
