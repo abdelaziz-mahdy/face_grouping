@@ -18,7 +18,7 @@ class SimilarFacesTab extends StatelessWidget {
                 const CircularProgressIndicator(),
                 const SizedBox(height: 20),
                 Text(
-                    'Processing: ${(controller.progress * 100).toStringAsFixed(2)}%'),
+                    '${controller.stage}: ${(controller.progress * 100).toStringAsFixed(2)}%'),
                 Text(
                     'Estimated time remaining: ${controller.timeRemaining.inSeconds} seconds'),
                 Text(

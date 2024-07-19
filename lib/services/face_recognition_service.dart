@@ -204,52 +204,35 @@ class FaceRecognitionService {
     final faceGroups = <List<FaceGroup>>[];
     int processedFaces = 0;
 
-    for (var entry in params.faceFeatures.entries) {
-      final faceImage = entry.key;
-      final faceFeature = cv.Mat.fromList(
-          1, entry.value.length, cv.MatType.CV_32FC1, entry.value);
+    final sortedFaceFeatures = params.faceFeatures.entries.toList()
+      ..sort((a, b) => _compareFeatures(a.value, b.value));
 
-      bool added = false;
+    for (var entry in sortedFaceFeatures) {
+      final faceImage = entry.key;
+      final faceFeature = entry.value;
+
+      List<FaceGroup>? closestGroup;
+      double closestDistance = double.infinity;
 
       for (var group in faceGroups) {
-        double totalMatchScoreCosine = 0;
-        double totalMatchScoreNormL2 = 0;
+        final averageFeature = _computeAverageFeature(
+            group.map((face) => params.faceFeatures[face.faceImage]!).toList());
+        final distance = _distance(faceFeature, averageFeature);
 
-        for (var existingFace in group) {
-          final existingFeature = cv.Mat.fromList(
-              1,
-              params.faceFeatures[existingFace.faceImage]!.length,
-              cv.MatType.CV_32FC1,
-              params.faceFeatures[existingFace.faceImage]!);
-          totalMatchScoreCosine += recognizer.match(
-            faceFeature,
-            existingFeature,
-            disType: cv.FaceRecognizerSF.FR_COSINE,
-          );
-          totalMatchScoreNormL2 += recognizer.match(
-            faceFeature,
-            existingFeature,
-            disType: cv.FaceRecognizerSF.FR_NORM_L2,
-          );
-        }
-
-        final averageMatchScoreCosine = totalMatchScoreCosine / group.length;
-        final averageMatchScoreNormL2 = totalMatchScoreNormL2 / group.length;
-
-        if (averageMatchScoreCosine >= 0.38 &&
-            averageMatchScoreNormL2 <= 1.12) {
-          group.add(FaceGroup(
-            faceImage: faceImage,
-            originalImagePath:
-                params.faceInfoMap[faceImage]!['originalImagePath'],
-            rect: params.faceInfoMap[faceImage]!['rect'],
-          ));
-          added = true;
-          break;
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestGroup = group;
         }
       }
 
-      if (!added) {
+      if (closestGroup != null &&
+          _isFeatureSimilar(recognizer, faceFeature, closestGroup, params)) {
+        closestGroup.add(FaceGroup(
+          faceImage: faceImage,
+          originalImagePath: params.faceInfoMap[faceImage]!['originalImagePath'],
+          rect: params.faceInfoMap[faceImage]!['rect'],
+        ));
+      } else {
         faceGroups.add([
           FaceGroup(
             faceImage: faceImage,
@@ -269,6 +252,60 @@ class FaceRecognitionService {
 
     recognizer.dispose();
     params.sendPort.send(GroupingCompleteMessage(faceGroups));
+  }
+
+  static bool _isFeatureSimilar(cv.FaceRecognizerSF recognizer,
+      List<double> faceFeature, List<FaceGroup> group, _GroupFacesParams params) {
+    double totalMatchScoreCosine = 0;
+    double totalMatchScoreNormL2 = 0;
+
+    for (var existingFace in group) {
+      final existingFeature = cv.Mat.fromList(
+          1,
+          params.faceFeatures[existingFace.faceImage]!.length,
+          cv.MatType.CV_32FC1,
+          params.faceFeatures[existingFace.faceImage]!);
+      totalMatchScoreCosine += recognizer.match(
+        cv.Mat.fromList(1, faceFeature.length, cv.MatType.CV_32FC1, faceFeature),
+        existingFeature,
+        disType: cv.FaceRecognizerSF.FR_COSINE,
+      );
+      totalMatchScoreNormL2 += recognizer.match(
+        cv.Mat.fromList(1, faceFeature.length, cv.MatType.CV_32FC1, faceFeature),
+        existingFeature,
+        disType: cv.FaceRecognizerSF.FR_NORM_L2,
+      );
+    }
+
+    final averageMatchScoreCosine = totalMatchScoreCosine / group.length;
+    final averageMatchScoreNormL2 = totalMatchScoreNormL2 / group.length;
+
+    return averageMatchScoreCosine >= 0.38 &&
+        averageMatchScoreNormL2 <= 1.12;
+  }
+
+  static int _compareFeatures(List<double> a, List<double> b) {
+    final aSum = a.reduce((value, element) => value + element);
+    final bSum = b.reduce((value, element) => value + element);
+    return aSum.compareTo(bSum);
+  }
+
+  static List<double> _computeAverageFeature(List<List<double>> features) {
+    final avgFeature = List<double>.filled(features[0].length, 0.0);
+    for (var feature in features) {
+      for (var i = 0; i < feature.length; i++) {
+        avgFeature[i] += feature[i];
+      }
+    }
+    return avgFeature.map((value) => value / features.length).toList();
+  }
+
+  static double _distance(List<double> a, List<double> b) {
+    double sum = 0;
+    for (var i = 0; i < a.length; i++) {
+      sum += (a[i] - b[i]) * (a[i] - b[i]);
+    }
+    return sum;
   }
 }
 
