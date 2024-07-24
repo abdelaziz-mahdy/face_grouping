@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+// import 'package:opencv_dart/opencv_dart.dart';
 import 'ui/home_page.dart';
 
 void main() {
+  // print(getBuildInformation());
   runApp(const MyApp());
 }
 
