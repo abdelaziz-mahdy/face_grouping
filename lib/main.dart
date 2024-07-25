@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:opencv_dart/opencv_dart.dart';
 // import 'package:opencv_dart/opencv_dart.dart';
 import 'ui/home_page.dart';
 
 void main() {
   // print(getBuildInformation());
+  setLogLevel(LOG_LEVEL_ERROR);
   runApp(const MyApp());
 }
 
