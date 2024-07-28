@@ -5,7 +5,7 @@ import 'ui/home_page.dart';
 
 void main() {
   // print(getBuildInformation());
-  // setLogLevel(LOG_LEVEL_ERROR);
+  setLogLevel(LOG_LEVEL_ERROR);
   runApp(const MyApp());
 }
 
