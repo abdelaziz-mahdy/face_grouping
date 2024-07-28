@@ -145,8 +145,8 @@ class FaceRecognitionService {
     final recognizer = cv.FaceRecognizerSF.fromFile(
       params.modelPath,
       "",
-      backendId: cv.DNN_BACKEND_OPENCV,
-      targetId: cv.DNN_TARGET_OPENCL,
+      backendId: cv.DNN_BACKEND_VKCOM,
+      targetId: cv.DNN_TARGET_VULKAN,
     );
 
     final faceFeatures = <Uint8List, List<double>>{};
@@ -165,7 +165,7 @@ class FaceRecognitionService {
           1, rect.rawDetection.length, cv.MatType.CV_32FC1, rect.rawDetection);
       final alignedFace = recognizer.alignCrop(mat, faceBox);
       final feature = recognizer.feature(alignedFace);
-      final encodedFace = cv.imencode('.jpg', alignedFace);
+      final (_,encodedFace) = cv.imencode('.jpg', alignedFace);
       faceFeatures[encodedFace] =
           List.generate(feature.width, (index) => feature.at<double>(0, index));
 
@@ -197,8 +197,8 @@ class FaceRecognitionService {
     final recognizer = cv.FaceRecognizerSF.fromFile(
       params.modelPath,
       "",
-      backendId: cv.DNN_BACKEND_OPENCV,
-      targetId: cv.DNN_TARGET_OPENCL,
+      backendId: cv.DNN_BACKEND_VKCOM,
+      targetId: cv.DNN_TARGET_VULKAN,
     );
 
     final faceGroups = <List<FaceGroup>>[];
