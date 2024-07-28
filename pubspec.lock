@@ -195,12 +195,11 @@ packages:
   opencv_dart:
     dependency: "direct main"
     description:
-      path: "."
-      ref: HEAD
-      resolved-ref: ef4c394a5e11bfa60322558005c47cc83bb9b32b
-      url: "https://github.com/rainyl/opencv_dart.git"
-    source: git
-    version: "1.1.0+1"
+      name: opencv_dart
+      sha256: d60b6df2f62101d0af2a9f31132f0f0e8c9a153743209012c380dcb3a51085ec
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.2.0"
   path:
     dependency: transitive
     description:
