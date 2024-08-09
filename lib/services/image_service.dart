@@ -113,8 +113,8 @@ class ImageService {
       buf,
       Uint8List(0),
       (320, 320),
-      backendId: cv.DNN_BACKEND_VKCOM,
-      targetId: cv.DNN_TARGET_VULKAN,
+      // backendId: cv.DNN_BACKEND_VKCOM,
+      // targetId: cv.DNN_TARGET_VULKAN,
     );
 
     final totalImages = params.imagePaths.length;

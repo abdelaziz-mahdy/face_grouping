@@ -145,8 +145,8 @@ class FaceRecognitionService {
     final recognizer = cv.FaceRecognizerSF.fromFile(
       params.modelPath,
       "",
-      backendId: cv.DNN_BACKEND_VKCOM,
-      targetId: cv.DNN_TARGET_VULKAN,
+      // backendId: cv.DNN_BACKEND_VKCOM,
+      // targetId: cv.DNN_TARGET_VULKAN,
     );
 
     final faceFeatures = <Uint8List, List<double>>{};
@@ -197,8 +197,8 @@ class FaceRecognitionService {
     final recognizer = cv.FaceRecognizerSF.fromFile(
       params.modelPath,
       "",
-      backendId: cv.DNN_BACKEND_VKCOM,
-      targetId: cv.DNN_TARGET_VULKAN,
+      // backendId: cv.DNN_BACKEND_VKCOM,
+      // targetId: cv.DNN_TARGET_VULKAN,
     );
 
     final faceGroups = <List<FaceGroup>>[];
