@@ -27,19 +27,19 @@ class GroupFacesDetailScreen extends StatelessWidget {
           final rect = faceInfo.rect;
 
           return Card(
-            margin: EdgeInsets.all(10),
+            margin: const EdgeInsets.all(10),
             child: Padding(
               padding: const EdgeInsets.all(8.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Image.memory(faceImage),
-                  SizedBox(height: 10),
+                  const SizedBox(height: 10),
                   Text(
                     'Original Image: $originalImagePath',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  SizedBox(height: 5),
+                  const SizedBox(height: 5),
                   Text('Rect: ${rect.toMap()}'),
                 ],
               ),

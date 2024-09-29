@@ -165,7 +165,7 @@ class FaceRecognitionService {
           1, rect.rawDetection.length, cv.MatType.CV_32FC1, rect.rawDetection);
       final alignedFace = recognizer.alignCrop(mat, faceBox);
       final feature = recognizer.feature(alignedFace);
-      final (_,encodedFace) = cv.imencode('.jpg', alignedFace);
+      final (_, encodedFace) = cv.imencode('.jpg', alignedFace);
       faceFeatures[encodedFace] =
           List.generate(feature.width, (index) => feature.at<double>(0, index));
 

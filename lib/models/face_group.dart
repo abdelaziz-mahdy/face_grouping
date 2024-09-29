@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import 'package:face_grouping/models/sendable_rect.dart';
 
-
 class FaceGroup {
   final Uint8List faceImage;
   final String originalImagePath;
