@@ -92,7 +92,7 @@ class FaceRecognitionService {
 
         progressCallback(
           overallProgress,
-          "Processing",
+          "Stage 1 out of 2, Extracting faces features",
           overallProcessedFaces,
           totalFaces,
           remainingTime,
@@ -126,7 +126,7 @@ class FaceRecognitionService {
 
         progressCallback(
           overallProgress,
-          "Grouping",
+          "Stage 2 out of 2, Grouping",
           processed,
           totalFaces,
           remainingTime,
