@@ -36,14 +36,14 @@ class FaceRecognitionService {
     final completer = Completer<void>();
     final receivePort = ReceivePort();
     final startTime = DateTime.now();
-    const int numberOfIsolates = 7;
+    int numberOfIsolates = 7;
 
     final tmpModelPath =
         await _copyAssetFileToTmp("assets/face_recognition_sface_2021dec.onnx");
 
     final totalFaces = images.fold<int>(
         0, (sum, image) => sum + image.sendableFaceRects.length);
-    final batchSize = (totalFaces / numberOfIsolates).ceil();
+    var batchSize = (totalFaces / numberOfIsolates).ceil();
     final faceFeatures = <Uint8List, List<double>>{};
     final faceInfoMap = <Uint8List, Map<String, dynamic>>{};
     final progressMap = List.filled(numberOfIsolates, 0.0);
@@ -57,7 +57,10 @@ class FaceRecognitionService {
             'rect': rect,
           });
     }).toList();
-
+    if (totalFaces <= numberOfIsolates) {
+      numberOfIsolates = 1;
+      batchSize = totalFaces;
+    }
     for (var i = 0; i < numberOfIsolates; i++) {
       final start = i * batchSize;
       final end =

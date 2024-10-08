@@ -34,7 +34,7 @@ class ImageService {
     final completer = Completer<List<ImageData>>();
     final receivePort = ReceivePort();
     final startTime = DateTime.now();
-    final numberOfIsolates0 = numberOfIsolates;
+    var numberOfIsolates0 = numberOfIsolates;
 
     final tmpModelPath =
         await _copyAssetFileToTmp("assets/face_detection_yunet_2023mar.onnx");
@@ -46,12 +46,16 @@ class ImageService {
         .toList();
 
     final totalImages = imageFiles.length;
-    final batchSize = (totalImages / numberOfIsolates0).ceil();
+
+    var batchSize = (totalImages / numberOfIsolates0).ceil();
     final results = <ImageData>[];
     final progressMap = List.filled(numberOfIsolates0, 0.0);
     final processedImagesMap = List.filled(numberOfIsolates0, 0);
     int overallProcessedImages = 0;
-
+    if (totalImages <= numberOfIsolates0) {
+      numberOfIsolates0 = 1;
+      batchSize = totalImages;
+    }
     for (var i = 0; i < numberOfIsolates0; i++) {
       final start = i * batchSize;
       final end =
