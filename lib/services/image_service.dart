@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:face_grouping/models/image_data.dart';
 import 'package:face_grouping/models/sendable_rect.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:opencv_dart/opencv_dart.dart' as cv;
 import 'package:path_provider/path_provider.dart';
@@ -55,6 +56,9 @@ class ImageService {
     if (totalImages <= numberOfIsolates0) {
       numberOfIsolates0 = 1;
       batchSize = totalImages;
+    }
+    if (kDebugMode) {
+      print("total number of images $totalImages");
     }
     for (var i = 0; i < numberOfIsolates0; i++) {
       final start = i * batchSize;
