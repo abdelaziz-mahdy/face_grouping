@@ -243,17 +243,17 @@ class FaceRecognitionService {
     }
     int processed;
     int total;
+    double overallProgress;
     if (message.phase == ProcessingPhase.featureExtraction) {
       processed = extractionManager.processed;
       total = extractionManager.totalFaces;
+      overallProgress = extractionManager.overallProgress;
     } else {
       processed = groupingManager.processed;
       total = groupingManager.totalFaces;
+      overallProgress = groupingManager.overallProgress;
     }
 
-    final overallProgress =
-        (extractionManager.overallProgress + groupingManager.overallProgress) /
-            2;
     final elapsed = DateTime.now().difference(startTime);
     final estimatedTotalTime = elapsed * (1 / overallProgress);
     final remainingTime = estimatedTotalTime - elapsed;
