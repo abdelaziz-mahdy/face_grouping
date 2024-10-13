@@ -379,11 +379,16 @@ class FaceRecognitionService {
     int totalFaces,
   ) async {
     Map<List<double>, Map<List<double>, (double, double)>> distanceCache = {};
-
+    bool merge = false;
+    if (!merge) {
+      initialGroupedFaceGroups.sort((b, a) => a.length.compareTo(b.length));
+      sendPort.send(FinalGroupingCompleteMessage(initialGroupedFaceGroups));
+      return;
+    }
     var groupedFaceGroups = initialGroupedFaceGroups;
 
     // Initial merging in multiple isolates
-    while (false) {
+    while (true) {
       final mergeProgressReceivePort = ReceivePort();
       final completer = Completer<List<List<FaceGroup>>>();
       final List<Future> isolateFutures = [];
@@ -480,6 +485,7 @@ class FaceRecognitionService {
 
     groupedFaceGroups = await finalMergeCompleter.future;
     finalMergeReceivePort.close();
+
     groupedFaceGroups.sort((b, a) => a.length.compareTo(b.length));
     sendPort.send(FinalGroupingCompleteMessage(groupedFaceGroups));
   }
