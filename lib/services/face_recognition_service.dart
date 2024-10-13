@@ -639,8 +639,7 @@ class FaceRecognitionService {
     double normL2Distance;
     (cosineDistance, normL2Distance) =
         _calculateDistance(feature1, feature2, recognizer);
-    return cosineDistance < 0.38 &&
-        normL2Distance < 1.12; // Adjust thresholds as needed
+    return cosineDistance >= 0.38 && normL2Distance <= 1.12;
   }
 
   static (double cosineDistance, double normL2Distance) _calculateDistance(
