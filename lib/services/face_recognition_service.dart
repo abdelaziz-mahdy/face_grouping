@@ -165,7 +165,7 @@ class FaceRecognitionService {
     // Managers for tracking progress
     final extractionManager =
         _ExtractionManager(numberOfIsolates, allRects.length);
-    final groupingManager = _GroupingManager(numberOfIsolates);
+    final groupingManager = _GroupingManager(numberOfIsolates, allRects.length);
 
     final receivePort = ReceivePort();
     final completer = Completer<void>();
@@ -195,7 +195,8 @@ class FaceRecognitionService {
             tmpModelPath,
             receivePort.sendPort,
             startTime,
-            progressCallback); // Modified to include progress callback
+            progressCallback,
+            allRects.length); // Pass total number of faces
       } else if (message is FinalGroupingCompleteMessage) {
         _handleFinalGroupingComplete(
             message, completionCallback, completer, receivePort);
@@ -240,6 +241,15 @@ class FaceRecognitionService {
       // Grouping or Merging
       groupingManager.updateProgress(message);
     }
+    int processed;
+    int total;
+    if (message.phase == ProcessingPhase.featureExtraction) {
+      processed = extractionManager.processed;
+      total = extractionManager.totalFaces;
+    } else {
+      processed = groupingManager.processed;
+      total = groupingManager.totalFaces;
+    }
 
     final overallProgress =
         (extractionManager.overallProgress + groupingManager.overallProgress) /
@@ -255,8 +265,8 @@ class FaceRecognitionService {
             : message.phase == ProcessingPhase.grouping
                 ? "Grouping faces"
                 : "Merging groups",
-        message.processed,
-        message.total,
+        processed,
+        total,
         remainingTime);
   }
 
@@ -344,40 +354,166 @@ class FaceRecognitionService {
       String tmpModelPath,
       SendPort sendPort,
       DateTime startTime,
-      void Function(double, String, int, int, Duration) progressCallback) {
+      void Function(double, String, int, int, Duration) progressCallback,
+      int totalFaces) {
     groupingManager.addGroups(message.faceGroups);
-
     if (groupingManager.isComplete) {
-      _startMerging(groupingManager.groupedFaceGroups, tmpModelPath, sendPort,
-          startTime, progressCallback);
+      _startMerging(
+          groupingManager.groupedFaceGroups,
+          tmpModelPath,
+          sendPort,
+          startTime,
+          progressCallback,
+          groupingManager.numberOfIsolates,
+          totalFaces); // Pass totalFaces
     }
   }
 
   void _startMerging(
-      List<List<FaceGroup>> groupedFaceGroups,
-      String tmpModelPath,
-      SendPort sendPort,
-      DateTime startTime,
-      void Function(double, String, int, int, Duration) progressCallback) {
-    final progressReceivePort = ReceivePort(); // New receive port for progress
+    List<List<FaceGroup>> initialGroupedFaceGroups,
+    String tmpModelPath,
+    SendPort sendPort,
+    DateTime startTime, // Not used in this version, consider removing
+    void Function(double, String, int, int, Duration) progressCallback,
+    int currentNumIsolates,
+    int totalFaces,
+  ) async {
+    var groupedFaceGroups = initialGroupedFaceGroups;
 
-    Isolate.spawn(
+    // Initial merging in multiple isolates
+    while (true) {
+      final mergeProgressReceivePort = ReceivePort();
+      final completer = Completer<List<List<FaceGroup>>>();
+      final List<Future> isolateFutures = [];
+      final batchSize = (groupedFaceGroups.length / currentNumIsolates).ceil();
+      int totalProcessed = 0;
+      List<GroupingProgress> isolateProgresses = List.filled(
+          currentNumIsolates, GroupingProgress(0, "Merging Groups", 0, 0));
+
+      for (int i = 0; i < currentNumIsolates; i++) {
+        final start = i * batchSize;
+        final end = min((i + 1) * batchSize, groupedFaceGroups.length);
+        final batch = groupedFaceGroups.sublist(start, end);
+
+        if (batch.isNotEmpty) {
+          isolateProgresses[i] =
+              GroupingProgress(0, "Merging Groups", 0, batch.length);
+          final progressSendPort = ReceivePort();
+
+          progressSendPort.listen((progressMessage) {
+            if (progressMessage is GroupingProgress) {
+              isolateProgresses[i] = progressMessage;
+              totalProcessed =
+                  isolateProgresses.fold<int>(0, (sum, p) => sum + p.processed);
+              double overallProgress =
+                  totalFaces != 0 ? (totalProcessed / totalFaces) : 0;
+              progressCallback(overallProgress, progressMessage.message,
+                  totalProcessed, totalFaces, Duration.zero);
+            }
+          });
+
+          isolateFutures.add(Isolate.spawn<_MergeGroupsParams>(
+                  _mergeGroupsIsolate,
+                  _MergeGroupsParams(
+                      batch,
+                      tmpModelPath,
+                      mergeProgressReceivePort.sendPort,
+                      progressSendPort.sendPort))
+              .then((_) => progressSendPort.close()));
+        }
+      }
+      List<List<FaceGroup>> mergedGroups = [];
+      int isolateProcessed = 0;
+      mergeProgressReceivePort.listen((message) {
+        if (message is GroupingCompleteMessage) {
+          mergedGroups.addAll(message.faceGroups);
+        }
+        isolateProcessed++;
+        if (isolateProcessed == currentNumIsolates) {
+          mergeProgressReceivePort.close();
+          completer.complete(mergedGroups);
+        }
+      });
+
+      await Future.wait(isolateFutures);
+      await completer.future;
+
+      mergeProgressReceivePort.close();
+
+      int initialNumGroups = groupedFaceGroups.length;
+      groupedFaceGroups = mergedGroups;
+
+      if (initialNumGroups == mergedGroups.length) {
+        break; // Exit if no more merges occurred
+      } else {
+        currentNumIsolates = max(1, (mergedGroups.length / batchSize).ceil());
+      }
+    }
+
+    // Final merging in a single isolate AFTER the initial merging
+    final finalMergeReceivePort = ReceivePort();
+    final finalMergeCompleter = Completer<List<List<FaceGroup>>>();
+
+    Isolate.spawn<_MergeGroupsParams>(
       _mergeGroupsIsolate,
-      _MergeGroupsParams(groupedFaceGroups, tmpModelPath, sendPort,
-          progressReceivePort.sendPort),
+      _MergeGroupsParams(
+        groupedFaceGroups,
+        tmpModelPath,
+        finalMergeReceivePort.sendPort,
+        sendPort, // Send progress to main isolate
+      ),
     );
 
-    progressReceivePort.listen((message) {
-      if (message is GroupingProgress) {
-        // Handle progress updates
-        progressCallback(
-            message.progress,
-            message.message,
-            message.processed,
-            message.total,
-            Duration.zero); // Or calculate approximate remaining time
+    finalMergeReceivePort.listen((message) {
+      if (message is GroupingCompleteMessage) {
+        finalMergeCompleter.complete(message.faceGroups);
+      } else if (message is GroupingProgress) {
+        // Receive progress updates
+        progressCallback(message.progress, message.message, message.processed,
+            totalFaces, Duration.zero);
       }
     });
+
+    groupedFaceGroups = await finalMergeCompleter.future;
+    finalMergeReceivePort.close();
+    groupedFaceGroups.sort((b, a) => a.length.compareTo(b.length));
+    sendPort.send(FinalGroupingCompleteMessage(groupedFaceGroups));
+  }
+
+  static Future<void> _mergeGroupsIsolate(_MergeGroupsParams params) async {
+    final recognizer = cv.FaceRecognizerSF.fromFile(params.tmpModelPath, "");
+    final mergedGroups = <List<FaceGroup>>[];
+
+    int processedInIsolate = 0;
+
+    for (var i = 0; i < params.groupedFaceGroups.length; i++) {
+      var group1 = params.groupedFaceGroups[i];
+      var merged = false;
+
+      for (var j = 0; j < mergedGroups.length; j++) {
+        var group2 = mergedGroups[j];
+
+        final averageFeature1 = _computeAverageFeature(
+            group1.map((face) => face.faceFeature).toList());
+        final averageFeature2 = _computeAverageFeature(
+            group2.map((face) => face.faceFeature).toList());
+
+        if (_areFeaturesSimilar(averageFeature1, averageFeature2, recognizer)) {
+          mergedGroups[j].addAll(group1);
+          merged = true;
+          break;
+        }
+      }
+      if (!merged) {
+        mergedGroups.add(group1);
+      }
+      processedInIsolate++;
+      final progress = (i + 1) / params.groupedFaceGroups.length;
+      params.progressSendPort.send(GroupingProgress(progress, "Merging Groups",
+          processedInIsolate, params.groupedFaceGroups.length));
+    }
+    recognizer.dispose();
+    params.sendPort.send(GroupingCompleteMessage(mergedGroups));
   }
 
   void _handleFinalGroupingComplete(
@@ -483,76 +619,47 @@ class FaceRecognitionService {
     for (var group in faceGroups) {
       final averageFeature = _computeAverageFeature(
           group.map((face) => face.faceFeature).toList());
-      final distance =
-          _calculateDistance(faceFeature, averageFeature, recognizer);
 
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestGroup = group;
+      if (_areFeaturesSimilar(faceFeature, averageFeature, recognizer)) {
+        final distance =
+            _calculateDistance(faceFeature, averageFeature, recognizer).$2;
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestGroup = group;
+        }
       }
-    }
-
-    // Adjust threshold as needed
-    if (minDistance > 1.12) {
-      // Example threshold - adjust as needed
-      return null; // No close group found
     }
 
     return closestGroup;
   }
 
-  static double _calculateDistance(List<double> feature1, List<double> feature2,
+  static bool _areFeaturesSimilar(List<double> feature1, List<double> feature2,
+      cv.FaceRecognizerSF recognizer) {
+    double cosineDistance;
+    double normL2Distance;
+    (cosineDistance, normL2Distance) =
+        _calculateDistance(feature1, feature2, recognizer);
+    return cosineDistance < 0.38 &&
+        normL2Distance < 1.12; // Adjust thresholds as needed
+  }
+
+  static (double cosineDistance, double normL2Distance) _calculateDistance(
+      List<double> feature1,
+      List<double> feature2,
       cv.FaceRecognizerSF recognizer) {
     final mat1 =
         cv.Mat.fromList(1, feature1.length, cv.MatType.CV_32FC1, feature1);
     final mat2 =
         cv.Mat.fromList(1, feature2.length, cv.MatType.CV_32FC1, feature2);
 
+    final cosineDistance =
+        recognizer.match(mat1, mat2, disType: cv.FaceRecognizerSF.FR_COSINE);
     final normL2Distance =
         recognizer.match(mat1, mat2, disType: cv.FaceRecognizerSF.FR_NORM_L2);
+
     mat1.dispose();
     mat2.dispose();
-
-    return normL2Distance;
-  }
-
-  static Future<void> _mergeGroupsIsolate(_MergeGroupsParams params) async {
-    final recognizer = cv.FaceRecognizerSF.fromFile(params.tmpModelPath, "");
-    final mergedGroups = <List<FaceGroup>>[];
-    var numGroupsMerged = 0;
-
-    for (var i = 0; i < params.groupedFaceGroups.length; i++) {
-      var group1 = params.groupedFaceGroups[i];
-      var merged = false;
-
-      for (var j = 0; j < mergedGroups.length; j++) {
-        var group2 = mergedGroups[j];
-
-        final averageFeature1 = _computeAverageFeature(
-            group1.map((face) => face.faceFeature).toList());
-        final averageFeature2 = _computeAverageFeature(
-            group2.map((face) => face.faceFeature).toList());
-
-        final distance =
-            _calculateDistance(averageFeature1, averageFeature2, recognizer);
-
-        if (distance < 1.12) {
-          // Example Threshold - Adjust as needed
-          mergedGroups[j].addAll(group1);
-          merged = true;
-          numGroupsMerged++;
-          break; // Exit inner loop after merging
-        }
-      }
-      if (!merged) {
-        mergedGroups.add(group1);
-      }
-      final progress = (i + 1) / params.groupedFaceGroups.length;
-      params.progressSendPort.send(GroupingProgress(progress, "Merging Groups",
-          i + 1, params.groupedFaceGroups.length)); // Send progress update
-    }
-    recognizer.dispose();
-    params.sendPort.send(FinalGroupingCompleteMessage(mergedGroups));
+    return (cosineDistance, normL2Distance);
   }
 
   static int _compareFeatures(List<double> a, List<double> b) {
@@ -582,15 +689,18 @@ class _ExtractionManager {
   final int numberOfIsolates;
   final int totalFaces;
   final List<double> progressMap;
+  final List<int> processedFacesMap;
   final Map<Uint8List, List<double>> faceFeatures = {};
   final Map<Uint8List, FaceInfo> faceInfoMap = {}; // Use FaceInfo
   int completedIsolates = 0;
 
   _ExtractionManager(this.numberOfIsolates, this.totalFaces)
-      : progressMap = List.filled(numberOfIsolates, 0.0);
+      : progressMap = List.filled(numberOfIsolates, 0.0),
+        processedFacesMap = List.filled(numberOfIsolates, 0);
 
   void updateProgress(ProgressMessage message) {
     progressMap[message.isolateIndex] = message.progress;
+    processedFacesMap[message.isolateIndex] = message.processed;
   }
 
   void addFeatures(
@@ -601,6 +711,7 @@ class _ExtractionManager {
   }
 
   bool get isComplete => completedIsolates == numberOfIsolates;
+  int get processed => processedFacesMap.reduce((a, b) => a + b);
   double get overallProgress =>
       progressMap.reduce((a, b) => a + b) / numberOfIsolates;
 }
@@ -608,14 +719,18 @@ class _ExtractionManager {
 class _GroupingManager {
   final int numberOfIsolates;
   final List<double> progressMap;
+  final List<int> processedFaces;
+  final int totalFaces;
   final List<List<FaceGroup>> groupedFaceGroups = [];
   int completedIsolates = 0;
 
-  _GroupingManager(this.numberOfIsolates)
-      : progressMap = List.filled(numberOfIsolates, 0.0);
+  _GroupingManager(this.numberOfIsolates, this.totalFaces)
+      : progressMap = List.filled(numberOfIsolates, 0.0),
+        processedFaces = List.filled(numberOfIsolates, 0);
 
   void updateProgress(ProgressMessage message) {
     progressMap[message.isolateIndex] = message.progress;
+    processedFaces[message.isolateIndex] = message.processed;
   }
 
   void addGroups(List<List<FaceGroup>> groups) {
@@ -624,6 +739,7 @@ class _GroupingManager {
   }
 
   bool get isComplete => completedIsolates == numberOfIsolates;
+  int get processed => processedFaces.reduce((a, b) => a + b);
   double get overallProgress =>
       progressMap.reduce((a, b) => a + b) / numberOfIsolates;
 }
