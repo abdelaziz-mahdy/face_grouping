@@ -52,8 +52,8 @@ class GroupingProgress {
 
 class GroupingCompleteMessage {
   final List<List<FaceGroup>> faceGroups;
-
-  GroupingCompleteMessage(this.faceGroups);
+  final Map<List<double>, Map<List<double>, (double, double)>> distanceCache;
+  GroupingCompleteMessage(this.faceGroups, this.distanceCache);
 }
 
 class FinalGroupingCompleteMessage {
@@ -97,9 +97,9 @@ class _MergeGroupsParams {
   final String tmpModelPath;
   final SendPort sendPort;
   final SendPort progressSendPort; // Port for sending progress
-
+  final Map<List<double>, Map<List<double>, (double, double)>> distanceCache;
   _MergeGroupsParams(this.groupedFaceGroups, this.tmpModelPath, this.sendPort,
-      this.progressSendPort);
+      this.progressSendPort, this.distanceCache);
 }
 
 class FaceInfo {
@@ -378,10 +378,12 @@ class FaceRecognitionService {
     int currentNumIsolates,
     int totalFaces,
   ) async {
+    Map<List<double>, Map<List<double>, (double, double)>> distanceCache = {};
+
     var groupedFaceGroups = initialGroupedFaceGroups;
 
     // Initial merging in multiple isolates
-    while (true) {
+    while (false) {
       final mergeProgressReceivePort = ReceivePort();
       final completer = Completer<List<List<FaceGroup>>>();
       final List<Future> isolateFutures = [];
@@ -418,7 +420,8 @@ class FaceRecognitionService {
                       batch,
                       tmpModelPath,
                       mergeProgressReceivePort.sendPort,
-                      progressSendPort.sendPort))
+                      progressSendPort.sendPort,
+                      distanceCache))
               .then((_) => progressSendPort.close()));
         }
       }
@@ -427,6 +430,7 @@ class FaceRecognitionService {
       mergeProgressReceivePort.listen((message) {
         if (message is GroupingCompleteMessage) {
           mergedGroups.addAll(message.faceGroups);
+          distanceCache.addAll(message.distanceCache);
         }
         isolateProcessed++;
         if (isolateProcessed == currentNumIsolates) {
@@ -457,11 +461,11 @@ class FaceRecognitionService {
     Isolate.spawn<_MergeGroupsParams>(
       _mergeGroupsIsolate,
       _MergeGroupsParams(
-        groupedFaceGroups,
-        tmpModelPath,
-        finalMergeReceivePort.sendPort,
-        sendPort, // Send progress to main isolate
-      ),
+          groupedFaceGroups,
+          tmpModelPath,
+          finalMergeReceivePort.sendPort,
+          sendPort, // Send progress to main isolate
+          distanceCache),
     );
 
     finalMergeReceivePort.listen((message) {
@@ -483,6 +487,7 @@ class FaceRecognitionService {
   static Future<void> _mergeGroupsIsolate(_MergeGroupsParams params) async {
     final recognizer = cv.FaceRecognizerSF.fromFile(params.tmpModelPath, "");
     final mergedGroups = <List<FaceGroup>>[];
+    final distanceCache = params.distanceCache ?? {};
 
     int processedInIsolate = 0;
 
@@ -493,12 +498,7 @@ class FaceRecognitionService {
       for (var j = 0; j < mergedGroups.length; j++) {
         var group2 = mergedGroups[j];
 
-        final averageFeature1 = _computeAverageFeature(
-            group1.map((face) => face.faceFeature).toList());
-        final averageFeature2 = _computeAverageFeature(
-            group2.map((face) => face.faceFeature).toList());
-
-        if (_areFeaturesSimilar(averageFeature1, averageFeature2, recognizer)) {
+        if (_areGroupsSimilar(group1, group2, recognizer, distanceCache)) {
           mergedGroups[j].addAll(group1);
           merged = true;
           break;
@@ -507,13 +507,47 @@ class FaceRecognitionService {
       if (!merged) {
         mergedGroups.add(group1);
       }
+
       processedInIsolate++;
       final progress = (i + 1) / params.groupedFaceGroups.length;
       params.progressSendPort.send(GroupingProgress(progress, "Merging Groups",
           processedInIsolate, params.groupedFaceGroups.length));
     }
+
     recognizer.dispose();
-    params.sendPort.send(GroupingCompleteMessage(mergedGroups));
+    params.sendPort.send(GroupingCompleteMessage(mergedGroups, distanceCache));
+  }
+
+  static bool _areGroupsSimilar(
+      List<FaceGroup> group1,
+      List<FaceGroup> group2,
+      cv.FaceRecognizerSF recognizer,
+      Map<List<double>, Map<List<double>, (double, double)>> distanceCache) {
+    for (var face1 in group1) {
+      for (var face2 in group2) {
+        final feature1 = face1.faceFeature;
+        final feature2 = face2.faceFeature;
+
+        (double cosineDistance, double normL2Distance) distances;
+
+        if (distanceCache.containsKey(feature1) &&
+            (distanceCache[feature1]?.containsKey(feature2) ?? false)) {
+          distances = distanceCache[feature1]![feature2]!;
+        } else {
+          distances = _calculateDistance(feature1, feature2, recognizer);
+          distanceCache.putIfAbsent(feature1, () => {});
+          distanceCache[feature1]![feature2] = distances;
+
+          distanceCache.putIfAbsent(feature2, () => {});
+          distanceCache[feature2]![feature1] = distances;
+        }
+
+        if (distances.$1 >= 0.38 && distances.$2 <= 1.12) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   void _handleFinalGroupingComplete(
@@ -608,7 +642,7 @@ class FaceRecognitionService {
     }
 
     recognizer.dispose();
-    params.sendPort.send(GroupingCompleteMessage(faceGroups.toList()));
+    params.sendPort.send(GroupingCompleteMessage(faceGroups.toList(), {}));
   }
 
   static List<FaceGroup>? _findClosestGroup(Set<List<FaceGroup>> faceGroups,
