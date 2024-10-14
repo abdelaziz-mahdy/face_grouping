@@ -58,8 +58,9 @@ class SimilarFacesTab extends StatelessWidget {
                                   itemBuilder: (context, faceIndex) {
                                     return Padding(
                                       padding: const EdgeInsets.all(4.0),
-                                      child: _buildFaceImage(
-                                          group[faceIndex].faceImage),
+                                      child: BuildFaceImage(
+                                          faceImageData:
+                                              group[faceIndex].faceImage),
                                     );
                                   },
                                 ),
@@ -71,22 +72,18 @@ class SimilarFacesTab extends StatelessWidget {
                 ),
     );
   }
+}
 
-  Widget _buildFaceImage(Uint8List faceImageData) {
-    return FutureBuilder<Uint8List>(
-      future: _decodeFaceImage(faceImageData),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done &&
-            snapshot.hasData) {
-          return Image.memory(snapshot.data!);
-        } else {
-          return const CircularProgressIndicator();
-        }
-      },
-    );
-  }
+class BuildFaceImage extends StatelessWidget {
+  const BuildFaceImage({
+    super.key,
+    required this.faceImageData,
+  });
 
-  Future<Uint8List> _decodeFaceImage(Uint8List encodedFaceImage) async {
-    return encodedFaceImage;
+  final Uint8List faceImageData;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.memory(faceImageData);
   }
 }
