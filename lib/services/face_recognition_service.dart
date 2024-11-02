@@ -385,10 +385,12 @@ class FaceRecognitionService {
       sendPort.send(FinalGroupingCompleteMessage(initialGroupedFaceGroups));
       return;
     }
+    
     var groupedFaceGroups = initialGroupedFaceGroups;
-
+    int mergeCount = 0;
+    int mergeLimit = 2;
     // Initial merging in multiple isolates
-    while (true) {
+    while (true && mergeCount < mergeLimit) {
       final mergeProgressReceivePort = ReceivePort();
       final completer = Completer<List<List<FaceGroup>>>();
       final List<Future> isolateFutures = [];
@@ -457,6 +459,8 @@ class FaceRecognitionService {
       } else {
         currentNumIsolates = max(1, (mergedGroups.length / batchSize).ceil());
       }
+
+      mergeCount++;
     }
 
     // Final merging in a single isolate AFTER the initial merging
